@@ -104,7 +104,8 @@ function Handle($req, $ns) {
         Write-Host ("  실패: {0} ({1})" -f $orig, $_.Exception.Message) -ForegroundColor Red
         Write-Host $_.ScriptStackTrace -ForegroundColor DarkGray
         try { $null = $script:xl.Version } catch { $script:xl = $null }
-        Send-Json $ns @{ ok = $false; original = $orig; error = $_.Exception.Message }
+        $where = '{0} {1}번째 줄' -f [IO.Path]::GetFileName($_.InvocationInfo.ScriptName), $_.InvocationInfo.ScriptLineNumber
+        Send-Json $ns @{ ok = $false; original = $orig; error = ('{0} ({1})' -f $_.Exception.Message, $where) }
       }
     }
     '^/api/download$' {
