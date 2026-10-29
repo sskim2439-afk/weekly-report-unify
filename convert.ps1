@@ -42,7 +42,8 @@ function Get-Fmt($cell, [string]$text) {
     }
     $info.chars = $arr
     if ($info.size -is [DBNull]) { $info.size = $arr[[int][Math]::Floor(($text.Length - 1) / 2)][0] }
-    if ($info.color -is [DBNull]) { $info.color = 0 }
+    # 엑셀 색 값은 Double 이어야 한다 (정수 0을 넣으면 '지정한 캐스트가 잘못되었습니다' 오류)
+    if ($info.color -is [DBNull]) { $info.color = [double]0 }
   }
   return $info
 }
@@ -52,6 +53,7 @@ function Test-Val($v) { return ($null -ne $v -and -not ($v -is [DBNull])) }
 # 엑셀이 글자 서식 값을 비워서(DBNull) 주는 경우가 있어, 값이 있을 때만 넣고 실패해도 변환은 계속한다
 function Set-FontProp($font, [string]$prop, $val) {
   if (-not (Test-Val $val)) { return }
+  if ($prop -in @('Color', 'Size') -and $val -is [int]) { $val = [double]$val }
   try { $font.$prop = $val } catch {}
 }
 
@@ -266,8 +268,8 @@ function Process-Sheet($ws, $lay, $stats) {
         $cell.Value2 = $o.txt
         if ($o.font) {
           $cf = $cell.Font; $cf.Name = $o.font; $cf.Bold = $false
-          if (Test-Val $fmt.size) { $cf.Size = $fmt.size }
-          if (Test-Val $fmt.color) { $cf.Color = $fmt.color }
+          Set-FontProp $cf 'Size' $fmt.size
+          Set-FontProp $cf 'Color' $fmt.color
           $cf.Italic = $false; $cf.Strikethrough = $false; $cf.Underline = -4142
           if ($fmt.chars) {
             $len = $o.src.body.Length
@@ -298,13 +300,8 @@ function Process-Sheet($ws, $lay, $stats) {
             }
           } else {
             $cf = $cell.Font
-            if (Test-Val $fmt.name) { $cf.Name = $fmt.name }
-            if (Test-Val $fmt.size) { $cf.Size = $fmt.size }
-            if (Test-Val $fmt.color) { $cf.Color = $fmt.color }
-            if (Test-Val $fmt.bold) { $cf.Bold = $fmt.bold }
-            if (Test-Val $fmt.it) { $cf.Italic = $fmt.it }
-            if (Test-Val $fmt.ul) { $cf.Underline = $fmt.ul }
-            if (Test-Val $fmt.st) { $cf.Strikethrough = $fmt.st }
+            Set-FontProp $cf 'Name' $fmt.name; Set-FontProp $cf 'Size' $fmt.size; Set-FontProp $cf 'Color' $fmt.color
+            Set-FontProp $cf 'Bold' $fmt.bold; Set-FontProp $cf 'Italic' $fmt.it; Set-FontProp $cf 'Underline' $fmt.ul; Set-FontProp $cf 'Strikethrough' $fmt.st
           }
         }
         $r++
