@@ -49,6 +49,12 @@ function Get-Fmt($cell, [string]$text) {
 
 function Test-Val($v) { return ($null -ne $v -and -not ($v -is [DBNull])) }
 
+# 엑셀이 글자 서식 값을 비워서(DBNull) 주는 경우가 있어, 값이 있을 때만 넣고 실패해도 변환은 계속한다
+function Set-FontProp($font, [string]$prop, $val) {
+  if (-not (Test-Val $val)) { return }
+  try { $font.$prop = $val } catch {}
+}
+
 # 전주/금주 머리글을 찾아 칸 배치를 알아낸다
 function Find-Layout($ws) {
   $rng = $ws.Range($ws.Cells(1, 1), $ws.Cells(25, 26))
@@ -269,22 +275,26 @@ function Process-Sheet($ws, $lay, $stats) {
               $si2 = $o.src.bodyOff + $k
               if ($si2 -ge $fmt.chars.Count) { break }
               $ch = $fmt.chars[$si2]
-              if (($ch[1] -ne $fmt.color) -or ($ch[2] -ne -4142) -or $ch[3] -or $ch[4]) {
+              $ul = $(if ((Test-Val $ch[2]) -and $ch[2] -ne -4142) { $ch[2] } else { $null })
+              $stk = (Test-Val $ch[3]) -and $ch[3]
+              $itl = (Test-Val $ch[4]) -and $ch[4]
+              if (((Test-Val $ch[1]) -and $ch[1] -ne $fmt.color) -or $ul -or $stk -or $itl) {
                 $tf = $cell.Characters($o.boff + $k + 1, 1).Font
-                $tf.Color = $ch[1]
-                if ($ch[2] -ne -4142) { $tf.Underline = $ch[2] }
-                if ($ch[3]) { $tf.Strikethrough = $true }
-                if ($ch[4]) { $tf.Italic = $true }
+                Set-FontProp $tf 'Color' $ch[1]
+                if ($ul) { Set-FontProp $tf 'Underline' $ul }
+                if ($stk) { Set-FontProp $tf 'Strikethrough' $true }
+                if ($itl) { Set-FontProp $tf 'Italic' $true }
               }
             }
           }
-          if ($o.lvl -eq 'L1') { $cell.Characters(2, 2).Font.Name = 'Segoe UI Symbol' }
+          if ($o.lvl -eq 'L1') { try { $cell.Characters(2, 2).Font.Name = 'Segoe UI Symbol' } catch {} }
         } else {
           # 대괄호 제목 / ※ 메모는 내용·서식 그대로
           if ($fmt.chars) {
             for ($k = 0; $k -lt $o.txt.Length; $k++) {
               $ch = $fmt.chars[$k]; $tf = $cell.Characters($k + 1, 1).Font
-              $tf.Size = $ch[0]; $tf.Color = $ch[1]; $tf.Underline = $ch[2]; $tf.Strikethrough = $ch[3]; $tf.Italic = $ch[4]; $tf.Name = $ch[5]; $tf.Bold = $ch[6]
+              Set-FontProp $tf 'Size' $ch[0]; Set-FontProp $tf 'Color' $ch[1]; Set-FontProp $tf 'Underline' $ch[2]; Set-FontProp $tf 'Strikethrough' $ch[3]
+              Set-FontProp $tf 'Italic' $ch[4]; Set-FontProp $tf 'Name' $ch[5]; Set-FontProp $tf 'Bold' $ch[6]
             }
           } else {
             $cf = $cell.Font
