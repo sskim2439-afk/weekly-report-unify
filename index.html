@@ -128,6 +128,7 @@
   .namebox input { border: 0; outline: 0; font: inherit; font-size: 14px; font-weight: 700; color: var(--ink); min-width: 0; flex: 1; background: transparent; }
   .namebox span { color: var(--sub); font-size: 13px; padding-right: 8px; }
   .warn { background: var(--amber-soft); color: var(--amber); font-size: 12px; border-radius: 14px; padding: 8px 12px; line-height: 1.55; }
+  .fix { background: var(--accent-soft); color: #3f5bd6; font-size: 12px; border-radius: 14px; padding: 8px 12px; line-height: 1.55; }
 
   .toast {
     position: fixed; left: 50%; bottom: 28px; transform: translateX(-50%) translateY(20px); opacity: 0;
@@ -258,6 +259,7 @@ function render() {
       </div>
       <div class="meta">원본: ${esc(it.file.name)} · 부서명: ${esc(it.result.dept)} (${esc(it.result.deptHow)}에서 찾음) · 시트: ${esc(it.result.sheets.join(', '))}</div>
       ${it.result.warnings.length ? `<div class="warn">${it.result.warnings.map(esc).join('<br>')}</div>` : ''}
+      ${(it.result.fixes || []).length ? `<div class="fix">✏️ 오탈자 수정 ${it.result.fixes.length}종: ${it.result.fixes.map(esc).join(', ')}</div>` : ''}
     </li>`).join('');
 
   const pending = items.some(it => it.status === 'wait' || it.status === 'fail');

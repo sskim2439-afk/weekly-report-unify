@@ -50,6 +50,110 @@ function Get-Fmt($cell, [string]$text) {
 
 function Test-Val($v) { return ($null -ne $v -and -not ($v -is [DBNull])) }
 
+# ---------- 오탈자 교정 ----------
+# 틀린 게 확실한 일반 단어만 고친다. 업계 용어·영어·숫자는 넣지 않는다.
+# 글자 수가 같은 교정만 허용해 글자 단위 서식(색·밑줄) 위치가 어긋나지 않게 한다.
+$script:TypoRules = @(
+  @('(?<![가-힣])맟(?![가-힣])', '및'),
+  @('헌황', '현황'),
+  @('진황(?=\s*현황)', '진행'),
+  @('역활', '역할'),
+  @('갯수', '개수'),
+  @('됬', '됐'),
+  @('되서(?=[\s,.)]|$)', '돼서'),
+  @('되요(?=[\s,.)!?]|$)', '돼요'),
+  @('몇일', '며칠'),
+  @('오랫만', '오랜만'),
+  @('일일히', '일일이'),
+  @('곰곰히', '곰곰이'),
+  @('깨끗히', '깨끗이'),
+  @('틈틈히', '틈틈이'),
+  @('번번히', '번번이'),
+  @('일찍히', '일찍이'),
+  @('꼼꼼이', '꼼꼼히'),
+  @('솔직이', '솔직히'),
+  @('익숙치', '익숙지'),
+  @('요컨데', '요컨대'),
+  @('생각컨데', '생각건대'),
+  @('할려고', '하려고'),
+  @('어떻해', '어떻게'),
+  @('어짜피', '어차피'),
+  @('엇그제', '엊그제'),
+  @('왠일', '웬일'),
+  @('웬지', '왠지'),
+  @('왠만', '웬만'),
+  @('희안', '희한'),
+  @('어의없', '어이없'),
+  # 율/률: 모음·ㄴ 받침 뒤는 '율', 그 밖의 받침 뒤는 '률'
+  @('수익율', '수익률'), @('진행율', '진행률'), @('달성율', '달성률'), @('성장율', '성장률'),
+  @('합격율', '합격률'), @('가동율', '가동률'), @('이익율', '이익률'), @('투입율', '투입률'),
+  @('출석율', '출석률'), @('적중율', '적중률'), @('진척율', '진척률'), @('참석율', '참석률'),
+  @('응답율', '응답률'), @('채택율', '채택률'), @('사용율', '사용률'), @('활용율', '활용률'),
+  @('불량율', '불량률'), @('점검율', '점검률'), @('수금율', '수금률'),
+  @('출하률', '출하율'), @('처리률', '처리율'), @('전환률', '전환율'), @('점유률', '점유율'),
+  @('회수률', '회수율'), @('감소률', '감소율'), @('할인률', '할인율'), @('증가률', '증가율'),
+  @('원가률', '원가율'), @('접수률', '접수율'), @('완료률', '완료율'), @('준수률', '준수율'),
+  @('참여률', '참여율'), @('(?<![가-힣])비률', '비율')
+)
+
+function Repair-Typos([string]$s, $stats) {
+  foreach ($rule in $script:TypoRules) {
+    $ms = [regex]::Matches($s, $rule[0])
+    if ($ms.Count -eq 0) { continue }
+    $new = [regex]::Replace($s, $rule[0], $rule[1])
+    if ($new.Length -ne $s.Length) { continue }
+    foreach ($m in $ms) { [void]$stats.typos.Add(('{0}→{1}' -f $m.Value, $rule[1])) }
+    $s = $new
+  }
+  return $s
+}
+
+# ---------- 긴 문장 줄바꿈 ----------
+Add-Type -AssemblyName System.Drawing
+$script:Gfx = [System.Drawing.Graphics]::FromImage((New-Object System.Drawing.Bitmap 1, 1))
+$script:Gfx.PageUnit = [System.Drawing.GraphicsUnit]::Point
+$script:Sf = [System.Drawing.StringFormat]::GenericTypographic.Clone()
+$script:Sf.FormatFlags = $script:Sf.FormatFlags -bor [System.Drawing.StringFormatFlags]::MeasureTrailingSpaces
+$script:FontCache = @{}
+$script:FontAlias = @{ '네오현대 B' = 'NeoHyundai B'; '네오현대 L' = 'NeoHyundai L' }
+
+function Measure-Pt([string]$text, [string]$fontName, [double]$size) {
+  $key = "$fontName|$size"
+  if (-not $script:FontCache.ContainsKey($key)) {
+    $fam = $script:FontAlias[$fontName]; if (-not $fam) { $fam = $fontName }
+    $f = New-Object System.Drawing.Font($fam, [single]$size, [System.Drawing.GraphicsUnit]::Point)
+    if ($f.Name -ne $fam) { $f = New-Object System.Drawing.Font('Malgun Gothic', [single]$size, [System.Drawing.GraphicsUnit]::Point) }
+    $script:FontCache[$key] = $f
+  }
+  return $script:Gfx.MeasureString($text, $script:FontCache[$key], 100000, $script:Sf).Width
+}
+
+# 칸 너비(W, pt)에 맞게 body를 띄어쓰기 단위로 나눈다. 반환: @{ text; start; len } 목록
+function Split-ToWidth([string]$prefix, [string]$body, [int]$pad, [string]$fontName, [double]$size, [double]$W) {
+  $res = @(); $pos = 0; $first = $true
+  while ($pos -lt $body.Length -and $res.Count -lt 50) {
+    $lead = $(if ($first) { $prefix } else { ' ' * $pad })
+    $rest = $body.Substring($pos)
+    if ((Measure-Pt ($lead + $rest) $fontName $size) -le $W) { $res += @{ text = $lead + $rest; start = $pos; len = $rest.Length }; break }
+    $cut = -1
+    for ($i = 1; $i -lt $rest.Length; $i++) {
+      if ($rest[$i] -ne ' ') { continue }
+      if ((Measure-Pt ($lead + $rest.Substring(0, $i).TrimEnd()) $fontName $size) -le $W) { $cut = $i } else { break }
+    }
+    if ($cut -le 0) {
+      # 띄어쓰기로 못 나누면 글자 단위로 자른다
+      $cut = 1
+      while ($cut -lt $rest.Length -and (Measure-Pt ($lead + $rest.Substring(0, $cut + 1)) $fontName $size) -le $W) { $cut++ }
+    }
+    $piece = $rest.Substring(0, $cut).TrimEnd()
+    $res += @{ text = $lead + $piece; start = $pos; len = $piece.Length }
+    $pos += $cut
+    while ($pos -lt $body.Length -and $body[$pos] -eq ' ') { $pos++ }
+    $first = $false
+  }
+  return , $res
+}
+
 # 엑셀이 글자 서식 값을 비워서(DBNull) 주는 경우가 있어, 값이 있을 때만 넣고 실패해도 변환은 계속한다
 function Set-FontProp($font, [string]$prop, $val) {
   if (-not (Test-Val $val)) { return }
@@ -93,9 +197,15 @@ function Clean-Label([string]$v) {
 }
 
 function Get-Sections($ws, $lay) {
+  # 숨긴 행이 있으면 End(xlUp)가 마지막 행을 못 찾을 수 있어, 사용 범위 끝까지 실제 값으로 확인한다
   $lastRow = 0
+  $urEnd = $ws.UsedRange.Row + $ws.UsedRange.Rows.Count - 1
   foreach ($col in $lay.cols) {
     $e = $ws.Cells($ws.Rows.Count, $col).End(-4162).Row
+    if ($urEnd -gt $e) {
+      $vals = $ws.Range($ws.Cells($e, $col), $ws.Cells($urEnd, $col)).Value2
+      if ($vals -is [array]) { for ($i = $vals.GetLength(0); $i -ge 1; $i--) { if (([string]$vals[$i, 1]).Trim() -ne '') { $e = $e + $i - 1; break } } }
+    }
     if ($e -gt $lastRow) { $lastRow = $e }
   }
   $starts = @(); $labels = @()
@@ -220,6 +330,8 @@ function Process-Sheet($ws, $lay, $stats) {
         }
         for ($q = 0; $q -lt $nb; $q++) { $out += @{ blank = $true } }
         if ($it.type -eq 'PIC') { $out += @{ pic = $it.pic; n = $it.n }; $prevOut = 'PIC'; continue }
+        $wrapable = $it.lvl -in @('L1', 'L1BR', 'L2', 'L3', 'L4', 'CONT')
+        if ($wrapable) { $it.body = Repair-Typos $it.body $stats }
         switch ($it.lvl) {
           'L1'   { $txt = " $($script:CHK) " + $it.body; $font = $script:FB; $boff = 4 }
           'L1BR' { $txt = " " + $it.body; $font = $script:FB; $boff = 1 }
@@ -233,7 +345,28 @@ function Process-Sheet($ws, $lay, $stats) {
           }
           default { $txt = $it.raw; $font = $null; $boff = 0 }
         }
-        $out += @{ txt = $txt; font = $font; boff = $boff; src = $it; lvl = $it.lvl }
+        $pieces = $null
+        if ($wrapable -and -not $it.cell.WrapText) {
+          # 칸 너비를 넘으면 아랫줄로 내린다 (윗줄 글자 시작 위치에 맞춰 들여쓰기)
+          $W = $(if ($it.cell.MergeCells) { $it.cell.MergeArea.Width } else { $it.cell.Width }) - 3
+          $sz = $it.cell.Font.Size; if (-not (Test-Val $sz)) { $sz = $it.cell.Characters([Math]::Min($it.raw.Length, $it.bodyOff + 1), 1).Font.Size }
+          if (-not (Test-Val $sz)) { $sz = 11 }
+          $pad = @{ L1 = 3; L1BR = 1; L2 = 5; L3 = 8; L4 = 11 }[$it.lvl]; if ($it.lvl -eq 'CONT') { $pad = $boff }
+          if ($W -gt 20 -and (Measure-Pt $txt $font $sz) -gt $W) {
+            $pieces = Split-ToWidth $txt.Substring(0, $boff) $it.body $pad $font $sz $W
+            if ($pieces.Count -le 1) { $pieces = $null }
+          }
+        }
+        if ($pieces) {
+          $stats.wrapped++
+          for ($pi = 0; $pi -lt $pieces.Count; $pi++) {
+            $pc = $pieces[$pi]
+            $out += @{ txt = $pc.text; font = $font; boff = $(if ($pi -eq 0) { $boff } else { $pad }); src = $it
+                       lvl = $(if ($pi -eq 0) { $it.lvl } else { 'WRAP' }); poff = $it.bodyOff + $pc.start; plen = $pc.len }
+          }
+        } else {
+          $out += @{ txt = $txt; font = $font; boff = $boff; src = $it; lvl = $it.lvl; poff = $it.bodyOff; plen = $it.body.Length }
+        }
         $prevOut = $it.lvl
         if ($stats.levels.ContainsKey($it.lvl)) { $stats.levels[$it.lvl]++ } else { $stats.levels[$it.lvl] = 1 }
       }
@@ -248,7 +381,7 @@ function Process-Sheet($ws, $lay, $stats) {
     $extra = $endNeeded - $s1
 
     # 쓰기 전에 원본 서식을 모두 읽어둔다
-    foreach ($p in $plans) { foreach ($o in $p.out) { if ($o.src) { $o.fmt = Get-Fmt $o.src.cell $o.src.raw } } }
+    foreach ($p in $plans) { foreach ($o in $p.out) { if ($o.src) { if (-not $o.src.fmtc) { $o.src.fmtc = Get-Fmt $o.src.cell $o.src.raw }; $o.fmt = $o.src.fmtc } } }
     if ($extra -gt 0) {
       $ins = [Math]::Min($maxLast + 1, $s1)
       if ($ins -le $maxLast) { $ins = $s1 }
@@ -272,9 +405,9 @@ function Process-Sheet($ws, $lay, $stats) {
           Set-FontProp $cf 'Color' $fmt.color
           $cf.Italic = $false; $cf.Strikethrough = $false; $cf.Underline = -4142
           if ($fmt.chars) {
-            $len = $o.src.body.Length
+            $len = $o.plen
             for ($k = 0; $k -lt $len; $k++) {
-              $si2 = $o.src.bodyOff + $k
+              $si2 = $o.poff + $k
               if ($si2 -ge $fmt.chars.Count) { break }
               $ch = $fmt.chars[$si2]
               $ul = $(if ((Test-Val $ch[2]) -and $ch[2] -ne -4142) { $ch[2] } else { $null })
@@ -332,7 +465,7 @@ function Convert-WeeklyReport($Excel, [string]$InPath, [string]$OutDir, [string]
       $act = $wb.ActiveSheet
       $cands = @($cands | Sort-Object { if ($_.ws.Name -eq $act.Name) { 0 } else { 1 } })
     }
-    $stats = @{ levels = @{}; inserted = 0 }
+    $stats = @{ levels = @{}; inserted = 0; wrapped = 0; typos = (New-Object System.Collections.ArrayList) }
     $deptInfo = $null; $sheetNames = @()
     foreach ($c in $cands) {
       if ($null -eq $deptInfo) { $deptInfo = Get-DeptName $c.ws $c.lay (Get-Sections $c.ws $c.lay) $OrigName }
@@ -341,13 +474,16 @@ function Convert-WeeklyReport($Excel, [string]$InPath, [string]$OutDir, [string]
     }
     if ($deptInfo.how -in @('파일명 추정', '찾지 못함')) { [void]$warn.Add("파일 안에서 부서명을 찾지 못해 '$($deptInfo.name)'(으)로 정했습니다. 이름을 확인해 주세요.") }
     if ($stats.levels['L4']) { [void]$warn.Add("4단계 하위 항목 $($stats.levels['L4'])개는 · 기호에 들여쓰기 9칸으로 표시했습니다.") }
-    if ($stats.inserted -gt 0) { [void]$warn.Add("빈 줄을 넣느라 행 $($stats.inserted)개를 추가했습니다.") }
+    if ($stats.wrapped -gt 0) { [void]$warn.Add("칸을 넘는 긴 문장 $($stats.wrapped)개를 아랫줄로 내렸습니다.") }
+    if ($stats.inserted -gt 0) { [void]$warn.Add("빈 줄·줄바꿈 때문에 행 $($stats.inserted)개를 추가했습니다.") }
+    # 오탈자 수정 내역: 같은 교정은 묶어서 '맟→및 (2건)' 형태로
+    $fixes = @($stats.typos | Group-Object | ForEach-Object { if ($_.Count -gt 1) { "$($_.Name) ($($_.Count)건)" } else { $_.Name } })
 
     $outName = "{0}_주간업무보고_{1}.xlsx" -f $deptInfo.name, $DateTag
     $outPath = Join-Path $OutDir $outName
     if (Test-Path -LiteralPath $outPath) { Remove-Item -LiteralPath $outPath -Force }
     $wb.SaveAs($outPath, 51)
-    return @{ dept = $deptInfo.name; deptHow = $deptInfo.how; outPath = $outPath; outName = $outName; sheets = $sheetNames; stats = $stats; warnings = @($warn) }
+    return @{ dept = $deptInfo.name; deptHow = $deptInfo.how; outPath = $outPath; outName = $outName; sheets = $sheetNames; stats = $stats; warnings = @($warn); fixes = $fixes }
   } finally {
     $wb.Close($false)
   }

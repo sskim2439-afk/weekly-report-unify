@@ -99,7 +99,7 @@ function Handle($req, $ns) {
         $res = Convert-WeeklyReport -Excel (Get-Excel) -InPath $inPath -OutDir $outDir -OrigName $orig -DateTag (Get-Date -Format 'yyMMdd')
         $jobs[$id] = $res.outPath
         Write-Host ("  완료: {0} -> {1}" -f $orig, $res.outName)
-        Send-Json $ns @{ ok = $true; id = $id; original = $orig; outName = $res.outName; dept = $res.dept; deptHow = $res.deptHow; sheets = @($res.sheets); warnings = @($res.warnings) }
+        Send-Json $ns @{ ok = $true; id = $id; original = $orig; outName = $res.outName; dept = $res.dept; deptHow = $res.deptHow; sheets = @($res.sheets); warnings = @($res.warnings); fixes = @($res.fixes) }
       } catch {
         Write-Host ("  실패: {0} ({1})" -f $orig, $_.Exception.Message) -ForegroundColor Red
         Write-Host $_.ScriptStackTrace -ForegroundColor DarkGray
