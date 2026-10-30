@@ -18,11 +18,12 @@ function Parse-Line([string]$raw) {
   $s = $raw.Substring($ind)
   $o = @{ raw = $raw; indent = $ind; type = 'none'; body = $s; bodyOff = $ind; textStart = $ind }
   $m = $null
-  if ($s -match ('^(' + [regex]::Escape($script:CHK) + '|√|✓|✔|☑|✅)\s*')) { $o.type = 'L1'; $m = $matches[0] }
+  # 대표 항목 기호: 체크 표시 + 네모·마름모·삼각형 계열 (□ ■ ▣ ◆ ◇ ▶ ▷ ►)
+  if ($s -match ('^(' + [regex]::Escape($script:CHK) + '|√|✓|✔|☑|✅|□|■|▣|◆|◇|▶|▷|►)\s*')) { $o.type = 'L1'; $m = $matches[0] }
   elseif ($s -match '^\[') { $o.type = 'BR' }
   elseif ($s -match '^※') { $o.type = 'NOTE' }
   elseif ($s -match '^(->|[-_–—−‐])\s*') { if ($matches[1] -eq '->') { $o.type = 'L3s' } else { $o.type = 'L2' }; $m = $matches[0] }
-  elseif ($s -match '^(·|•|〮|ㆍ|∙|‧|ㄴ|→|>|\*|▪|◦|:|\.)\s*') { $o.type = 'L3s'; $m = $matches[0] }
+  elseif ($s -match '^(·|•|〮|ㆍ|∙|‧|ㄴ|→|>|\*|▪|◦|○|●|◎|:|\.)\s*') { $o.type = 'L3s'; $m = $matches[0] }
   elseif ($s -match '^(\(\d+\)|\d+\)|[①-⑳]|\d+\.\s)') { $o.type = 'NUM' }
   if ($m) { $o.body = $s.Substring($m.Length); $o.bodyOff = $ind + $m.Length; $o.textStart = $ind + $m.Length }
   elseif ($o.type -eq 'none') { $o.textStart = $ind - 1 }
@@ -289,29 +290,39 @@ function Process-Sheet($ws, $lay, $stats) {
       if (-not $anchor) { continue }
 
       # 계층 판별
-      $hasL2 = $false; $l2Ind = 0; $prevLvl = $null; $prevTS = 0; $prevBase = $null
+      # l2Mk: 2단계를 차지한 기호 종류. 다른 기호(•, ① 등)가 2단계면 그보다 깊은 '-'는 3단계로 본다
+      $hasL2 = $false; $l2Ind = 0; $l2Mk = ''; $prevLvl = $null; $prevTS = 0; $prevBase = $null
       $hasL3 = $false; $l3Mk = ''; $l3Ind = 0
       foreach ($it in $items) {
         if ($it.type -eq 'PIC') { continue }
+        $mk = switch ($it.type) { 'L2' { '-' } 'L3s' { $it.raw.Substring($it.indent, 1) } 'NUM' { 'NUM' } default { $it.type } }
         switch ($it.type) {
           'L1'   { $lvl = 'L1'; $hasL2 = $false }
           'BR'   { $lvl = 'BR'; $hasL2 = $false }
           'NOTE' { $lvl = 'NOTE'; $hasL2 = $false }
-          'L2'   { $lvl = 'L2' }
+          'L2'   {
+            if ($hasL2 -and $l2Mk -ne '-' -and $it.indent -gt $l2Ind) {
+              if ($hasL3 -and $l3Mk -ne '-' -and $it.indent -gt $l3Ind) { $lvl = 'L4' }
+              else { $lvl = 'L3'; $hasL3 = $true; $l3Mk = '-'; $l3Ind = $it.indent }
+            } else { $lvl = 'L2' }
+          }
           'L3s'  {
-            $mk = $it.raw.Substring($it.indent, 1)
-            if ($hasL3 -and $mk -ne $l3Mk -and $it.indent -gt $l3Ind) { $lvl = 'L4' }
+            if ($hasL2 -and ($mk -eq $l2Mk -or $it.indent -lt $l2Ind)) { $lvl = 'L2' }
+            elseif ($hasL3 -and $mk -ne $l3Mk -and $it.indent -gt $l3Ind) { $lvl = 'L4' }
             elseif ($hasL2) { $lvl = 'L3'; $hasL3 = $true; $l3Mk = $mk; $l3Ind = $it.indent }
             else { $lvl = 'L2' }
           }
-          'NUM'  { if ($hasL2 -and $it.indent -gt $l2Ind) { $lvl = 'L3' } else { $lvl = 'L2' } }
+          'NUM'  {
+            if ($hasL2 -and $l2Mk -eq 'NUM') { $lvl = 'L2' }
+            elseif ($hasL2 -and $it.indent -gt $l2Ind) { $lvl = 'L3' } else { $lvl = 'L2' }
+          }
           'none' {
             if ($prevLvl -and $prevLvl -notin @('BR', 'NOTE') -and $it.indent -le $prevTS) { $lvl = 'CONT' }
             elseif ($hasL2) { $lvl = 'L3' } elseif ($prevLvl) { $lvl = 'L2' } else { $lvl = 'RAW' }
           }
         }
         if ($lvl -eq 'L1' -and $it.body.StartsWith('[')) { $lvl = 'L1BR' }
-        if ($lvl -eq 'L2') { $hasL2 = $true; $l2Ind = $it.indent; $hasL3 = $false }
+        if ($lvl -eq 'L2') { $hasL2 = $true; $l2Ind = $it.indent; $l2Mk = $mk; $hasL3 = $false }
         if ($lvl -in @('L1', 'L1BR', 'BR', 'NOTE')) { $hasL3 = $false }
         if ($lvl -eq 'CONT') { $it.base = $(if ($prevLvl -eq 'CONT') { $prevBase } else { $prevLvl }); $prevBase = $it.base } else { $prevBase = $lvl }
         $it.lvl = $lvl
