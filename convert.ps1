@@ -321,7 +321,25 @@ function Process-Sheet($ws, $lay, $stats) {
             elseif ($hasL2) { $lvl = 'L3' } elseif ($prevLvl) { $lvl = 'L2' } else { $lvl = 'RAW' }
           }
         }
-        if ($lvl -eq 'L1' -and $it.body.StartsWith('[')) { $lvl = 'L1BR' }
+        # 본문 각 글자가 원본 셀의 몇 번째 글자인지 (글자 단위 색·밑줄을 옮길 때 사용)
+        $it.bmap = New-Object int[] $it.body.Length
+        for ($q = 0; $q -lt $it.body.Length; $q++) { $it.bmap[$q] = $it.bodyOff + $q }
+        # '🗸 [xxx] 내용' → 체크는 남기고 대괄호만 지운다: '🗸 xxx 내용'
+        if ($lvl -eq 'L1') {
+          $bm = [regex]::Match($it.body, '^\[([^\]]*)\]\s*')
+          if ($bm.Success) {
+            $inner = $bm.Groups[1].Value.Trim(); $innerAt = $bm.Groups[1].Index + $bm.Groups[1].Value.IndexOf($inner)
+            $rest = $it.body.Substring($bm.Length)
+            $newMap = New-Object System.Collections.Generic.List[int]
+            for ($q = 0; $q -lt $inner.Length; $q++) { $newMap.Add($it.bodyOff + $innerAt + $q) }
+            $newBody = $inner
+            if ($rest.Length -gt 0) {
+              $newBody += ' ' + $rest; $newMap.Add($it.bodyOff + $bm.Groups[1].Index + $bm.Groups[1].Length)
+              for ($q = 0; $q -lt $rest.Length; $q++) { $newMap.Add($it.bodyOff + $bm.Length + $q) }
+            }
+            $it.body = $newBody; $it.bmap = $newMap.ToArray(); $it.debracket = $true
+          }
+        }
         if ($lvl -eq 'L2') { $hasL2 = $true; $l2Ind = $it.indent; $l2Mk = $mk; $hasL3 = $false }
         if ($lvl -in @('L1', 'L1BR', 'BR', 'NOTE')) { $hasL3 = $false }
         if ($lvl -eq 'CONT') { $it.base = $(if ($prevLvl -eq 'CONT') { $prevBase } else { $prevLvl }); $prevBase = $it.base } else { $prevBase = $lvl }
@@ -373,10 +391,10 @@ function Process-Sheet($ws, $lay, $stats) {
           for ($pi = 0; $pi -lt $pieces.Count; $pi++) {
             $pc = $pieces[$pi]
             $out += @{ txt = $pc.text; font = $font; boff = $(if ($pi -eq 0) { $boff } else { $pad }); src = $it
-                       lvl = $(if ($pi -eq 0) { $it.lvl } else { 'WRAP' }); poff = $it.bodyOff + $pc.start; plen = $pc.len }
+                       lvl = $(if ($pi -eq 0) { $it.lvl } else { 'WRAP' }); pstart = $pc.start; plen = $pc.len }
           }
         } else {
-          $out += @{ txt = $txt; font = $font; boff = $boff; src = $it; lvl = $it.lvl; poff = $it.bodyOff; plen = $it.body.Length }
+          $out += @{ txt = $txt; font = $font; boff = $boff; src = $it; lvl = $it.lvl; pstart = 0; plen = $it.body.Length }
         }
         $prevOut = $it.lvl
         if ($stats.levels.ContainsKey($it.lvl)) { $stats.levels[$it.lvl]++ } else { $stats.levels[$it.lvl] = 1 }
@@ -418,7 +436,8 @@ function Process-Sheet($ws, $lay, $stats) {
           if ($fmt.chars) {
             $len = $o.plen
             for ($k = 0; $k -lt $len; $k++) {
-              $si2 = $o.poff + $k
+              if ($o.pstart + $k -ge $o.src.bmap.Length) { break }
+              $si2 = $o.src.bmap[$o.pstart + $k]
               if ($si2 -ge $fmt.chars.Count) { break }
               $ch = $fmt.chars[$si2]
               $ul = $(if ((Test-Val $ch[2]) -and $ch[2] -ne -4142) { $ch[2] } else { $null })
