@@ -94,8 +94,115 @@ $script:TypoRules = @(
   @('출하률', '출하율'), @('처리률', '처리율'), @('전환률', '전환율'), @('점유률', '점유율'),
   @('회수률', '회수율'), @('감소률', '감소율'), @('할인률', '할인율'), @('증가률', '증가율'),
   @('원가률', '원가율'), @('접수률', '접수율'), @('완료률', '완료율'), @('준수률', '준수율'),
-  @('참여률', '참여율'), @('(?<![가-힣])비률', '비율')
+  @('참여률', '참여율'), @('(?<![가-힣])비률', '비율'),
+  @('보급율', '보급률'), @('상승율', '상승률'), @('하락율', '하락률'), @('가입율', '가입률'), @('이직율', '이직률'),
+  @('경쟁율', '경쟁률'), @('정확율', '정확률'), @('계약율', '계약률'), @('매출율', '매출률'), @('이행율', '이행률'),
+  @('검출율', '검출률'), @('고장율', '고장률'), @('출동율', '출동률'), @('성공율', '성공률'), @('예측율', '예측률'),
+  @('절감율', '절감률'), @('감축율', '감축률'), @('인상율', '인상률'), @('공정율', '공정률'), @('충족율', '충족률'),
+  @('반영율', '반영률'), @('적용율', '적용률'), @('응찰율', '응찰률'), @('낙찰율', '낙찰률'), @('입찰율', '입찰률'),
+  @('수주률', '수주율'), @('갱신률', '갱신율'), @('해지률', '해지율'), @('납부률', '납부율'), @('개선률', '개선율'),
+  @('인하률', '인하율'), @('진도률', '진도율'),
+  # 자주 틀리는 일반 단어
+  @('피트백', '피드백'), @('헷지', '헤지'), @('댓가', '대가'), @('촛점', '초점'), @('싯가', '시가'),
+  @('내노라', '내로라'), @('닥달', '닦달'), @('덥썩', '덥석'), @('움추', '움츠'), @('안밖', '안팎'),
+  @('오랜동안', '오랫동안'), @('짜집기', '짜깁기'), @('설겆이', '설거지'), @('어줍잖', '어쭙잖'), @('어떡게', '어떻게'),
+  @('([가-힣]?[할될줄올갈릴볼알낼울킬])께(?=요|[\s,.)!?]|$)', '$1게'),
+  @('([았었였겠했있없])슴(?=[\s,.)/]|$)', '$1음')
 )
+
+# 확실하지 않은 것: 고치지 않고 노란색으로 표시만 한다. {0} 자리에 찾은 글자가 들어간다
+$script:SuspectRules = @(
+  @('(대금|카드|비용|현금|자금|송금|선급금|잔금)\s*결재', '{0} (결재→결제?)'),
+  @('결제\s*(상신|라인|권자|서류|문서)', '{0} (결제→결재?)'),
+  @('(공시|공지|기사|홈페이지|게시판|사보)\s*개재', '{0} (개재→게재?)'),
+  @('(?<![가-힣])일부로(?![가-힣])', '{0} (일부러?)'),
+  @('금새', '{0} (금세?)'),
+  @('몇\s+일(?![가-힣])', '{0} (며칠?)'),
+  @('않(되|돼|됨|된)', '{0} (안 되?)'),
+  @('(?<![가-힣])구지(?![가-힣])', '{0} (굳이?)'),
+  @('설레임', '{0} (설렘?)'),
+  @('되뇌이', '{0} (되뇌?)'),
+  @('(?<![가-힣])왠(?=\s)', '{0} (웬?)'),
+  @('(?<![0-9가-힣])년차', '{0} (연차?)'),
+  @('(?<=[가-힣])(을을|를를|는는|에에서)', '{0} (조사 반복?)'),
+  @('(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]{2,})\s+\1(?![가-힣A-Za-z0-9])', '{0} (같은 단어 반복?)')
+)
+
+# 자모 한 글자만 다른지 비교할 업무 단어 (맞춤법 검사기가 틀렸다고 한 단어만 비교한다)
+$script:Vocab = @'
+현황 검토 진행 완료 보고 계획 예정 추진 확인 점검 관리 요청 협의 회의 결과 분석 개선 대응 작성 실시 운영 준비 지원 수립 공유 발송 제출
+접수 승인 결재 결제 계약 체결 수주 매출 실적 목표 달성 예산 비용 원가 견적 단가 금액 수익 손익 이익 채권 채무 회수 청구 지급 납부 정산
+마감 결산 감사 평가 교육 채용 면접 인사 노무 안전 사고 재해 예방 조치 개정 변경 도입 구축 개발 설계 시스템 프로세스 전략 사업 영업 서비스
+설치 공사 현장 고객 협력사 법인 본부 담당 팀장 지사 센터 본사 해외 국내 시장 경쟁 동향 조사 자료 문서 보고서 회의록 일정 기한 기간 인원
+조직 업무 과제 이슈 리스크 품질 불량 클레임 교체 수리 보수 갱신 유지 모니터링 피드백 리뷰 업데이트 프로젝트 미팅 세미나 출장 방문 참석 발표
+협조 검수 입고 출하 배송 물량 재고 구매 발주 조달 소싱 공급 납기 생산 제작 제조 시험 인증 승강기 엘리베이터 에스컬레이터 정기 수시 긴급 신규
+기존 추가 보완 수정 반영 적용 확대 축소 감소 증가 상승 하락 전환 이관 인수 인계 통보 안내 공지 게시 홍보 마케팅 브랜드 행사 전시회 상품
+제품 기종 모델 부품 자재 장비 설비 기계 전기 제어 데이터 대시보드 보안 개인정보 규정 지침 기준 절차 양식 서식 표준 가이드 매뉴얼 법률 소송
+판결 계약서 약정 협약 합의 이사회 주주 공시 투자 자금 대출 금융 환율 세금 세무 회계 재무 연결 별도 내부 외부 감사인 위원회 경영 대표이사
+상무 전무 부장 차장 과장 대리 사원 매니저 직원 임직원 근로자 담당자 책임자 관리자 결정 판단 논의 마무리 시행 착수 착공 준공 개시 종료 연장
+만기 재계약 해지 취소 보류 지연 단축 조율 협상 제안 입찰 낙찰 선정 평가표 심사 실사 진단 컨설팅 용역 위탁 수탁 인센티브 성과급 급여 임금
+수당 휴가 근태 출근 퇴근 수익률 점유율 달성률 진행률 가동률 출하율 처리율 전환율 회수율 증가율 감소율 원가율 이익률 성장률 계약률
+'@ -split '\s+' | Where-Object { $_ } | Sort-Object Length -Descending
+
+# 맞춤법 검사기가 모르는 업계 용어·외래어 (노란색 표시에서 제외)
+$script:SpellAllow = @{}
+@'
+소싱 모듈 쉬브 시브 로프 피트 카도어 카상부 승강로 기계실 권상기 조속기 완충기 이노블록 이노블럭 갇힘 리모델링 모더니제이션 에스컬레이터
+무빙워크 주차기 넥스 럭센 헬리오스 챗봇 대시보드 필드웍 컨택 리플릿 룰렛 에코백 직영 대리점 협력사 숙당직 헤지 헷지 온핸드 스터핑 운행량
+'@ -split '\s+' | Where-Object { $_ } | ForEach-Object { $script:SpellAllow[$_] = 1 }
+
+# 단어 끝에 붙는 조사·어미 (떼어 내고 단어 본체만 비교한다)
+$script:Particles = @('으로써', '으로서', '에서는', '에서', '으로', '까지', '부터', '에게', '이며', '하여', '하고', '했음', '됨', '함', '을', '를', '이', '가', '은', '는', '의', '에', '로', '과', '와', '도', '만', '및', '등')
+
+if (-not ('JamoNear2' -as [type])) {
+  Add-Type -TypeDefinition @'
+public static class JamoNear2 {
+  static int[] J(char c) { int i = c - 0xAC00; if (i < 0 || i > 11171) return new int[] { -1, (int)c, 0 }; return new int[] { i / 588, (i % 588) / 28, i % 28 }; }
+  // tok 전체가 vocab 단어 중 하나와 자모 한 개만 다르면 그 단어를 돌려준다. 없으면 null
+  public static string Find(string tok, string[] vocab) {
+    foreach (string w in vocab) {
+      if (w.Length != tok.Length || w == tok) continue;
+      int d = 0;
+      for (int k = 0; k < w.Length && d < 2; k++) {
+        int[] a = J(tok[k]), b = J(w[k]);
+        if (a[0] == -1 || b[0] == -1) { if (tok[k] != w[k]) d += 2; continue; }
+        if (a[0] != b[0]) d++; if (a[1] != b[1]) d++; if (a[2] != b[2]) d++;
+      }
+      if (d == 1) return w;
+    }
+    return null;
+  }
+}
+'@
+}
+$script:VocabArr = [string[]]$script:Vocab
+$script:SpellCache = @{}
+
+# 애매한 오탈자 후보를 찾는다 (고치지 않음). 반환: '헌황→현황?' 같은 설명 목록
+function Find-Suspects([string]$s, $app) {
+  $res = New-Object System.Collections.ArrayList
+  foreach ($rule in $script:SuspectRules) {
+    foreach ($m in [regex]::Matches($s, $rule[0])) { [void]$res.Add(($rule[1] -f $m.Value)) }
+  }
+  foreach ($m in [regex]::Matches($s, '(?<![가-힣A-Za-z0-9])[가-힣]{2,}(?![A-Za-z0-9])')) {
+    $tok = $m.Value
+    if (-not $script:SpellCache.ContainsKey($tok)) {
+      $hit = $null
+      # 단어 본체 후보: 그대로 + 조사를 뗀 것
+      $stems = @($tok) + @($script:Particles | Where-Object { $tok.EndsWith($_) -and $tok.Length - $_.Length -ge 2 } | ForEach-Object { $tok.Substring(0, $tok.Length - $_.Length) })
+      foreach ($st in $stems) {
+        if ($script:SpellAllow.ContainsKey($st)) { break }
+        $ok = $true; try { $ok = [bool]$app.CheckSpelling($st) } catch {}
+        if ($ok) { continue }
+        $w = [JamoNear2]::Find($st, $script:VocabArr)
+        if ($w) { $hit = "$st→$w"; break }
+      }
+      $script:SpellCache[$tok] = $hit
+    }
+    if ($script:SpellCache[$tok]) { [void]$res.Add($script:SpellCache[$tok] + '?') }
+  }
+  return , @($res | Select-Object -Unique)
+}
 
 function Repair-Typos([string]$s, $stats) {
   foreach ($rule in $script:TypoRules) {
@@ -103,7 +210,7 @@ function Repair-Typos([string]$s, $stats) {
     if ($ms.Count -eq 0) { continue }
     $new = [regex]::Replace($s, $rule[0], $rule[1])
     if ($new.Length -ne $s.Length) { continue }
-    foreach ($m in $ms) { [void]$stats.typos.Add(('{0}→{1}' -f $m.Value, $rule[1])) }
+    foreach ($m in $ms) { [void]$stats.typos.Add(('{0}→{1}' -f $m.Value, $m.Result($rule[1]))) }
     $s = $new
   }
   return $s
@@ -130,21 +237,28 @@ function Measure-Pt([string]$text, [string]$fontName, [double]$size) {
 }
 
 # 칸 너비(W, pt)에 맞게 body를 띄어쓰기 단위로 나눈다. 반환: @{ text; start; len } 목록
+function Test-BulletStart([string]$s) {
+  return ($s -match ('^(' + [regex]::Escape($script:CHK) + '|[-_–—−‐·•〮ㆍ∙‧ㄴ→>*▪◦○●◎:.□■▣◆◇▶▷►√✓✔☑※]|[①-⑳]|\(\d+\)|\d+\)|\d+\.\s)'))
+}
+
 function Split-ToWidth([string]$prefix, [string]$body, [int]$pad, [string]$fontName, [double]$size, [double]$W) {
   $res = @(); $pos = 0; $first = $true
   while ($pos -lt $body.Length -and $res.Count -lt 50) {
     $lead = $(if ($first) { $prefix } else { ' ' * $pad })
     $rest = $body.Substring($pos)
     if ((Measure-Pt ($lead + $rest) $fontName $size) -le $W) { $res += @{ text = $lead + $rest; start = $pos; len = $rest.Length }; break }
+    # 한 문장에는 글머리 기호 하나만: 내린 줄이 '- 계속'처럼 기호로 시작하게 되는 자리에서는 끊지 않는다
     $cut = -1
     for ($i = 1; $i -lt $rest.Length; $i++) {
       if ($rest[$i] -ne ' ') { continue }
-      if ((Measure-Pt ($lead + $rest.Substring(0, $i).TrimEnd()) $fontName $size) -le $W) { $cut = $i } else { break }
+      if ((Measure-Pt ($lead + $rest.Substring(0, $i).TrimEnd()) $fontName $size) -gt $W) { break }
+      if (-not (Test-BulletStart $rest.Substring($i).TrimStart())) { $cut = $i }
     }
     if ($cut -le 0) {
-      # 띄어쓰기로 못 나누면 글자 단위로 자른다
+      # 띄어쓰기로 못 나누면 글자 단위로 자른다 (이때도 다음 줄이 기호로 시작하지 않게)
       $cut = 1
       while ($cut -lt $rest.Length -and (Measure-Pt ($lead + $rest.Substring(0, $cut + 1)) $fontName $size) -le $W) { $cut++ }
+      while ($cut -gt 1 -and (Test-BulletStart $rest.Substring($cut).TrimStart())) { $cut-- }
     }
     $piece = $rest.Substring(0, $cut).TrimEnd()
     $res += @{ text = $lead + $piece; start = $pos; len = $piece.Length }
@@ -251,7 +365,25 @@ function Get-DeptName($ws, $lay, $sections, [string]$fileName) {
   return @{ name = '부서명'; how = '찾지 못함' }
 }
 
+$script:ContentColWidth = 85
+
 function Process-Sheet($ws, $lay, $stats) {
+  # 내용 칸(전주/금주) 열 너비를 85로 통일. 사진·도형이 칸을 따라 늘어나지 않게 크기는 되돌린다
+  $needWidth = @($lay.cols | Where-Object { [Math]::Abs($ws.Columns($_).ColumnWidth - $script:ContentColWidth) -gt 0.01 })
+  if ($needWidth.Count -gt 0) {
+    $sizes = @(); foreach ($sh in $ws.Shapes) { try { $sizes += @{ s = $sh; w = $sh.Width; h = $sh.Height } } catch {} }
+    foreach ($col in $needWidth) { $ws.Columns($col).ColumnWidth = [double]$script:ContentColWidth }
+    foreach ($z in $sizes) {
+      try {
+        if ($z.s.Width -ne $z.w -or $z.s.Height -ne $z.h) {
+          $lock = $z.s.LockAspectRatio; $z.s.LockAspectRatio = 0
+          $z.s.Width = $z.w; $z.s.Height = $z.h
+          $z.s.LockAspectRatio = $lock
+        }
+      } catch {}
+    }
+    $stats.widened += $needWidth.Count
+  }
   $sections = Get-Sections $ws $lay
   $pics = @()
   foreach ($sh in $ws.Shapes) {
@@ -292,7 +424,7 @@ function Process-Sheet($ws, $lay, $stats) {
       # 계층 판별
       # l2Mk: 2단계를 차지한 기호 종류. 다른 기호(•, ① 등)가 2단계면 그보다 깊은 '-'는 3단계로 본다
       $hasL2 = $false; $l2Ind = 0; $l2Mk = ''; $prevLvl = $null; $prevTS = 0; $prevBase = $null
-      $hasL3 = $false; $l3Mk = ''; $l3Ind = 0
+      $hasL3 = $false; $l3Mk = ''; $l3Ind = 0; $prevRawEnd = ''; $prevNoneSub = $false; $prevNoneInd = -1
       foreach ($it in $items) {
         if ($it.type -eq 'PIC') { continue }
         $mk = switch ($it.type) { 'L2' { '-' } 'L3s' { $it.raw.Substring($it.indent, 1) } 'NUM' { 'NUM' } default { $it.type } }
@@ -317,10 +449,15 @@ function Process-Sheet($ws, $lay, $stats) {
             elseif ($hasL2 -and $it.indent -gt $l2Ind) { $lvl = 'L3' } else { $lvl = 'L2' }
           }
           'none' {
-            if ($prevLvl -and $prevLvl -notin @('BR', 'NOTE') -and $it.indent -le $prevTS) { $lvl = 'CONT' }
+            # 기호 없는 줄은 기본적으로 윗줄에 이어지는 문장(글머리 기호 없음)으로 본다.
+            # 하위 항목으로 보는 건 윗줄이 ':'로 끝날 때(예: '- 집중시장 :' 아래 '북미 : …')와 그 형제 줄뿐이다.
+            $subOk = ($prevRawEnd -match '[:：]$') -or ($prevNoneSub -and $it.indent -eq $prevNoneInd)
+            if ($prevLvl -and $prevLvl -notin @('BR', 'NOTE') -and ($it.indent -le $prevTS -or -not $subOk)) { $lvl = 'CONT' }
             elseif ($hasL2) { $lvl = 'L3' } elseif ($prevLvl) { $lvl = 'L2' } else { $lvl = 'RAW' }
           }
         }
+        $prevRawEnd = $it.raw.TrimEnd()
+        $prevNoneSub = ($it.type -eq 'none' -and $lvl -in @('L2', 'L3')); $prevNoneInd = $it.indent
         # 본문 각 글자가 원본 셀의 몇 번째 글자인지 (글자 단위 색·밑줄을 옮길 때 사용)
         $it.bmap = New-Object int[] $it.body.Length
         for ($q = 0; $q -lt $it.body.Length; $q++) { $it.bmap[$q] = $it.bodyOff + $q }
@@ -360,7 +497,11 @@ function Process-Sheet($ws, $lay, $stats) {
         for ($q = 0; $q -lt $nb; $q++) { $out += @{ blank = $true } }
         if ($it.type -eq 'PIC') { $out += @{ pic = $it.pic; n = $it.n }; $prevOut = 'PIC'; continue }
         $wrapable = $it.lvl -in @('L1', 'L1BR', 'L2', 'L3', 'L4', 'CONT')
-        if ($wrapable) { $it.body = Repair-Typos $it.body $stats }
+        if ($wrapable) {
+          $it.body = Repair-Typos $it.body $stats
+          $it.suspects = Find-Suspects $it.body $ws.Application
+          foreach ($x in $it.suspects) { [void]$stats.suspects.Add($x) }
+        }
         switch ($it.lvl) {
           'L1'   { $txt = " $($script:CHK) " + $it.body; $font = $script:FB; $boff = 4 }
           'L1BR' { $txt = " " + $it.body; $font = $script:FB; $boff = 1 }
@@ -420,7 +561,9 @@ function Process-Sheet($ws, $lay, $stats) {
     }
     foreach ($p in $plans) {
       $col = $p.col
-      $clearTo = [Math]::Max($p.last, $p.anchor + $p.need - 1)
+      # 행을 기존 내용 사이에 끼워 넣었으면 그 아래 원래 줄이 밀려 내려가 있으므로 그만큼 더 지운다
+      $lastNow = $p.last; if ($extra -gt 0 -and $ins -le $p.last) { $lastNow += $extra }
+      $clearTo = [Math]::Max($lastNow, $p.anchor + $p.need - 1)
       for ($r = $p.anchor; $r -le $clearTo; $r++) { $cl = $ws.Cells($r, $col); if (-not $cl.MergeCells) { [void]$cl.ClearContents() } }
       $r = $p.anchor
       foreach ($o in $p.out) {
@@ -453,6 +596,17 @@ function Process-Sheet($ws, $lay, $stats) {
             }
           }
           if ($o.lvl -eq 'L1') { try { $cell.Characters(2, 2).Font.Name = 'Segoe UI Symbol' } catch {} }
+          # 오탈자인지 확실하지 않은 줄: 노란색 형광펜 + 메모 (내린 줄까지 모두 칠한다)
+          if ($o.src.suspects -and $o.src.suspects.Count -gt 0) {
+            try { $cell.Interior.Color = [double]65535 } catch {}
+            if ($o.lvl -ne 'WRAP') {
+              $note = '오탈자 확인 필요: ' + ($o.src.suspects -join ', ')
+              try {
+                if ($cell.Comment) { [void]$cell.Comment.Text(([string]$cell.Comment.Text() + "`n" + $note)) }
+                else { [void]$cell.AddComment($note) }
+              } catch {}
+            }
+          }
         } else {
           # 대괄호 제목 / ※ 메모는 내용·서식 그대로
           if ($fmt.chars) {
@@ -495,7 +649,7 @@ function Convert-WeeklyReport($Excel, [string]$InPath, [string]$OutDir, [string]
       $act = $wb.ActiveSheet
       $cands = @($cands | Sort-Object { if ($_.ws.Name -eq $act.Name) { 0 } else { 1 } })
     }
-    $stats = @{ levels = @{}; inserted = 0; wrapped = 0; typos = (New-Object System.Collections.ArrayList) }
+    $stats = @{ levels = @{}; inserted = 0; wrapped = 0; widened = 0; typos = (New-Object System.Collections.ArrayList); suspects = (New-Object System.Collections.ArrayList) }
     $deptInfo = $null; $sheetNames = @()
     foreach ($c in $cands) {
       if ($null -eq $deptInfo) { $deptInfo = Get-DeptName $c.ws $c.lay (Get-Sections $c.ws $c.lay) $OrigName }
@@ -508,12 +662,14 @@ function Convert-WeeklyReport($Excel, [string]$InPath, [string]$OutDir, [string]
     if ($stats.inserted -gt 0) { [void]$warn.Add("빈 줄·줄바꿈 때문에 행 $($stats.inserted)개를 추가했습니다.") }
     # 오탈자 수정 내역: 같은 교정은 묶어서 '맟→및 (2건)' 형태로
     $fixes = @($stats.typos | Group-Object | ForEach-Object { if ($_.Count -gt 1) { "$($_.Name) ($($_.Count)건)" } else { $_.Name } })
+    $suspects = @($stats.suspects | Select-Object -Unique)
+    if ($stats.widened -gt 0) { [void]$warn.Add("내용 칸 열 너비를 85로 맞췄습니다.") }
 
     $outName = "{0}_주간업무보고_{1}.xlsx" -f $deptInfo.name, $DateTag
     $outPath = Join-Path $OutDir $outName
     if (Test-Path -LiteralPath $outPath) { Remove-Item -LiteralPath $outPath -Force }
     $wb.SaveAs($outPath, 51)
-    return @{ dept = $deptInfo.name; deptHow = $deptInfo.how; outPath = $outPath; outName = $outName; sheets = $sheetNames; stats = $stats; warnings = @($warn); fixes = $fixes }
+    return @{ dept = $deptInfo.name; deptHow = $deptInfo.how; outPath = $outPath; outName = $outName; sheets = $sheetNames; stats = $stats; warnings = @($warn); fixes = $fixes; suspects = $suspects }
   } finally {
     $wb.Close($false)
   }
