@@ -6,6 +6,8 @@
 <title>주간업무보고 양식 통일</title>
 <style>
   :root {
+    /* 브라우저에서 네오현대는 'NeoHyundai' 한 가족이고 굵기로 구분된다: 300=L, 400=R, 700=B */
+    --font: "NeoHyundai", "네오현대", "Malgun Gothic", "맑은 고딕", sans-serif;
     --bg: #f3f5fb;
     --card: #ffffff;
     --ink: #1f2540;
@@ -24,7 +26,7 @@
   * { box-sizing: border-box; }
   body {
     margin: 0; min-height: 100vh; color: var(--ink);
-    font-family: "Pretendard", "Malgun Gothic", "맑은 고딕", "Apple SD Gothic Neo", sans-serif;
+    font-family: var(--font); font-weight: 400;
     background:
       radial-gradient(circle at 10% 0%, #e6ecff 0, transparent 40%),
       radial-gradient(circle at 95% 100%, #e2f6ef 0, transparent 40%),
@@ -41,6 +43,10 @@
   header h1 { margin: 0; font-size: 24px; letter-spacing: -.3px; }
   header p { margin: 4px 0 0; color: var(--sub); font-size: 14px; }
   .head-right { margin-left: auto; display: flex; gap: 10px; align-items: center; }
+  .version {
+    display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent); font-size: 13px;
+  }
   .status {
     display: inline-flex; align-items: center; gap: 8px; padding: 8px 14px; border-radius: 999px;
     background: var(--card); box-shadow: var(--shadow); font-size: 13px; color: var(--sub);
@@ -140,6 +146,10 @@
   .overlay.show { display: grid; }
   .overlay div { background: var(--card); border-radius: 32px; padding: 36px 44px; box-shadow: var(--shadow); }
 
+  /* 글꼴: 일반 글자는 네오현대 R(400), 제목·버튼·강조는 네오현대 B(700) */
+  input, button { font-family: var(--font); }
+  h1, h2, b, .btn, .item .fname, .chip, .count, .namebox input, .drop b, .version b { font-family: var(--font) !important; font-weight: 700 !important; }
+
   @media (max-width: 900px) {
     .board { grid-template-columns: 1fr; gap: 16px; }
     .arrow span { transform: rotate(90deg); }
@@ -158,6 +168,8 @@
       <p>파일을 넣으면 글머리 기호(🗸 · - · ·)와 글꼴을 통일한 새 파일을 만들어 드려요.</p>
     </div>
     <div class="head-right">
+      <!-- 날짜는 도구가 알려준다: GitHub에 마지막으로 올린 날짜 (없으면 도구 파일을 마지막으로 고친 날짜) -->
+      <span class="version" title="이 도구가 마지막으로 업데이트된 날짜">최신 버전 <b id="ver">-</b></span>
       <span class="status" id="status"><span class="dot"></span><span id="statusText">연결 확인 중…</span></span>
       <button class="btn ghost small" id="btnQuit">도구 종료</button>
     </div>
@@ -327,7 +339,10 @@ async function downloadZip() {
 
 async function ping() {
   if (running) return;
-  try { const r = await fetch('/api/ping', { cache: 'no-store' }); online = r.ok; } catch (e) { online = false; }
+  try {
+    const r = await fetch('/api/ping', { cache: 'no-store' }); online = r.ok;
+    const j = await r.json(); if (j.version) $('ver').textContent = j.version;
+  } catch (e) { online = false; }
   $('status').className = 'status ' + (online ? 'on' : 'off');
   $('statusText').textContent = online ? '도구 연결됨' : '도구가 꺼져 있어요';
   render();

@@ -77,13 +77,24 @@ function Get-SafeName([string]$name) {
   return $n
 }
 
+# 화면 우상단 '최신 버전' 날짜 (yy-MM-dd)
+# version.txt: 자동 업데이트가 받아 둔 'GitHub에 마지막으로 올린 날짜'. 없으면 도구 파일을 마지막으로 고친 날짜를 쓴다
+function Get-ToolVersion {
+  $vf = Join-Path $here 'version.txt'
+  if (Test-Path $vf) { $v = ([IO.File]::ReadAllText($vf)).Trim(); if ($v -match '^\d{2}-\d{2}-\d{2}$') { return $v } }
+  $latest = Get-ChildItem $here -File | Where-Object { $_.Name -in @('convert.ps1', 'server.ps1', 'index.html', 'update.ps1') } |
+    Sort-Object LastWriteTime -Descending | Select-Object -First 1
+  if ($latest) { return $latest.LastWriteTime.ToString('yy-MM-dd') }
+  return ''
+}
+
 # ---------- 요청 처리 ----------
 function Handle($req, $ns) {
   switch -Regex ($req.path) {
     '^/$' {
       Send-Response $ns 200 'text/html; charset=utf-8' ([IO.File]::ReadAllBytes((Join-Path $here 'index.html')))
     }
-    '^/api/ping$' { Send-Json $ns @{ ok = $true; date = (Get-Date -Format 'yyMMdd') } }
+    '^/api/ping$' { Send-Json $ns @{ ok = $true; date = (Get-Date -Format 'yyMMdd'); version = (Get-ToolVersion) } }
     '^/api/convert$' {
       $orig = [Uri]::UnescapeDataString([string]$req.headers['x-file-name'])
       if (-not $orig) { $orig = 'upload.xlsx' }

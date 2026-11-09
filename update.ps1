@@ -56,6 +56,15 @@ try {
   }
   Remove-Item $tmp -Recurse -Force -ErrorAction SilentlyContinue
 
+  # 3) 화면에 보여 줄 버전 날짜 = GitHub에 마지막으로 올린 날짜 (한국 시간)
+  try {
+    $api = 'https://api.github.com/repos/sskim2439-afk/weekly-report-unify/commits?sha=main&per_page=1'
+    $r = Invoke-WebRequest -Uri $api -UseBasicParsing -TimeoutSec 15 -Headers @{ 'User-Agent' = 'weekly-unify-updater' }
+    $c = [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()) | ConvertFrom-Json
+    $when = ([DateTime]::Parse([string]@($c)[0].commit.committer.date)).ToUniversalTime().AddHours(9)
+    [IO.File]::WriteAllText((Join-Path $here 'version.txt'), $when.ToString('yy-MM-dd'))
+  } catch {}
+
   if ($changed.Count -gt 0) { Write-Host ('  [업데이트] 새 버전으로 바꿨습니다: ' + ($changed -join ', ')) -ForegroundColor Green }
   else { Write-Host '  [업데이트] 이미 최신 버전입니다.' -ForegroundColor Green }
 } catch {
