@@ -2,6 +2,11 @@
 # server.ps1에서 dot-source 해서 사용: Convert-WeeklyReport -Excel $xl -InPath ... -OutDir ... -OrigName ...
 
 $script:CHK = [char]::ConvertFromUtf32(0x1F5F8)
+# 체크 모양: √ ✓ ✔ ☑ ✅ / 🗸 🗹(상자 체크) / ⅴ ｖ Ｖ ∨ (v처럼 생긴 체크)
+$script:CheckRx = '(' + ((@($script:CHK, [char]::ConvertFromUtf32(0x1F5F9), '√', '✓', '✔', '☑', '✅', 'ⅴ', 'ｖ', 'Ｖ', '∨') | ForEach-Object { [regex]::Escape($_) }) -join '|') + ')'
+# 엑셀 [기호]로 넣은 기호 글꼴의 체크 (셀에는 ü·þ·P·R·a 같은 일반 글자로 저장되고 글꼴 때문에 체크로 보임)
+$script:SymbolFontRx = 'Wingdings|Webdings|Symbol|Marlett'
+$script:SymbolChecks = @{ 'Wingdings' = 'üþ'; 'Wingdings 2' = 'PRTO'; 'Wingdings 3' = ''; 'Webdings' = 'a' }
 $script:FB = "네오현대 B"
 $script:FL = "네오현대 L"
 $script:DeptSuffix = '(?:본부|담당|팀|실|센터|부문)'
@@ -18,8 +23,9 @@ function Parse-Line([string]$raw) {
   $s = $raw.Substring($ind)
   $o = @{ raw = $raw; indent = $ind; type = 'none'; body = $s; bodyOff = $ind; textStart = $ind }
   $m = $null
-  # 대표 항목 기호: 체크 표시 + 네모·마름모·삼각형 계열 (□ ■ ▣ ◆ ◇ ▶ ▷ ►)
-  if ($s -match ('^(' + [regex]::Escape($script:CHK) + '|√|✓|✔|☑|✅|□|■|▣|◆|◇|▶|▷|►)\s*')) { $o.type = 'L1'; $m = $matches[0] }
+  # 대표 항목 기호: 여러 모양의 체크 표시 + 네모·마름모·삼각형 계열 (□ ■ ▣ ◆ ◇ ▶ ▷ ►)
+  # 체크 뒤에 붙는 이모지 표시 문자(U+FE0F/FE0E)도 함께 지운다
+  if ($s -match ('^(' + $script:CheckRx + '|□|■|▣|◆|◇|▶|▷|►)[︎️]?\s*')) { $o.type = 'L1'; $m = $matches[0] }
   elseif ($s -match '^\[') { $o.type = 'BR' }
   elseif ($s -match '^※') { $o.type = 'NOTE' }
   elseif ($s -match '^(->|[-_–—−‐])\s*') { if ($matches[1] -eq '->') { $o.type = 'L3s' } else { $o.type = 'L2' }; $m = $matches[0] }
@@ -238,7 +244,26 @@ function Measure-Pt([string]$text, [string]$fontName, [double]$size) {
 
 # 칸 너비(W, pt)에 맞게 body를 띄어쓰기 단위로 나눈다. 반환: @{ text; start; len } 목록
 function Test-BulletStart([string]$s) {
-  return ($s -match ('^(' + [regex]::Escape($script:CHK) + '|[-_–—−‐·•〮ㆍ∙‧ㄴ→>*▪◦○●◎:.□■▣◆◇▶▷►√✓✔☑※]|[①-⑳]|\(\d+\)|\d+\)|\d+\.\s)'))
+  return ($s -match ('^(' + $script:CheckRx + '|[-_–—−‐·•〮ㆍ∙‧ㄴ→>*▪◦○●◎:.□■▣◆◇▶▷►※]|[①-⑳]|\(\d+\)|\d+\)|\d+\.\s)'))
+}
+
+# 줄 첫 기호가 기호 글꼴(Wingdings 등)로 된 글자면 실제 모양에 맞게 다시 분류한다.
+# 체크 모양이면 대표 항목(L1), 그 밖의 기호(●, ■ 등)는 하위 항목 기호로 본다.
+function Resolve-SymbolBullet($p) {
+  # 기호 글꼴의 글자는 일반 글자(ü, P, a …)나 0xF000대 글자라서 '기호 없는 줄'로 먼저 분류된다
+  if ($p.type -ne 'none' -or $p.indent -ge $p.raw.Length) { return }
+  $ch = $p.raw[$p.indent]
+  if ([char]::IsWhiteSpace($ch) -or ([int]$ch -ge 0xAC00 -and [int]$ch -le 0xD7A3)) { return }
+  $fn = ''; try { $fn = [string]$p.cell.Characters($p.indent + 1, 1).Font.Name } catch {}
+  if ($fn -notmatch $script:SymbolFontRx) { return }
+  $isCheck = $false
+  foreach ($k in $script:SymbolChecks.Keys) { if ($fn -eq $k -and $script:SymbolChecks[$k].Contains([string]$ch)) { $isCheck = $true } }
+  # 기호 글꼴의 글자는 0xF000대(PUA)로 들어오는 경우도 있다: F0FC=ü(체크), F0FE=þ(상자 체크)
+  if ([int]$ch -in @(0xF0FC, 0xF0FE)) { $isCheck = $true }
+  $len = 1; while ($p.indent + $len -lt $p.raw.Length -and [char]::IsWhiteSpace($p.raw[$p.indent + $len])) { $len++ }
+  $p.type = $(if ($isCheck) { 'L1' } else { 'L3s' })
+  $p.body = $p.raw.Substring($p.indent + $len).TrimEnd(); $p.bodyOff = $p.indent + $len; $p.textStart = $p.indent + $len
+  $p.symbolMk = 'SYM:' + $fn + [string]$ch
 }
 
 function Split-ToWidth([string]$prefix, [string]$body, [int]$pad, [string]$fontName, [double]$size, [double]$W) {
@@ -276,7 +301,11 @@ function Set-FontProp($font, [string]$prop, $val) {
   try { $font.$prop = $val } catch {}
 }
 
-# 전주/금주 머리글을 찾아 칸 배치를 알아낸다
+# 내용 칸 머리글('전주·금주' 또는 '금주·차주')을 찾아 칸 배치를 알아낸다.
+# 머리글 이름은 칸 위치를 찾는 데만 쓰고, 양식 통일 방식은 어느 쪽이든 같다.
+$script:HeadLeft = @('전주', '금주')
+$script:HeadRight = @{ '전주' = @('금주'); '금주' = @('차주', '다음주') }
+
 function Find-Layout($ws) {
   $rng = $ws.Range($ws.Cells(1, 1), $ws.Cells(25, 26))
   $vals = $rng.Value2
@@ -284,10 +313,11 @@ function Find-Layout($ws) {
   for ($r = 1; $r -le 25; $r++) {
     for ($c = 2; $c -le 25; $c++) {
       $t = ([string]$vals[$r, $c]) -replace '\s', ''
-      if (-not $t.StartsWith('전주')) { continue }
+      $left = $script:HeadLeft | Where-Object { $t.StartsWith($_) } | Select-Object -First 1
+      if (-not $left) { continue }
       for ($c2 = $c + 1; $c2 -le [Math]::Min(26, $c + 2); $c2++) {
         $t2 = ([string]$vals[$r, $c2]) -replace '\s', ''
-        if ($t2.StartsWith('금주')) {
+        if (@($script:HeadRight[$left] | Where-Object { $t2.StartsWith($_) }).Count -gt 0) {
           if ($null -eq $best -or $c -lt $best.prev) { $best = @{ row = $r; prev = $c; cur = $c2 } }
           break
         }
@@ -368,7 +398,7 @@ function Get-DeptName($ws, $lay, $sections, [string]$fileName) {
 $script:ContentColWidth = 85
 
 function Process-Sheet($ws, $lay, $stats) {
-  # 내용 칸(전주/금주) 열 너비를 85로 통일. 사진·도형이 칸을 따라 늘어나지 않게 크기는 되돌린다
+  # 내용 칸(전주/금주 또는 금주/차주) 열 너비를 85로 통일. 사진·도형이 칸을 따라 늘어나지 않게 크기는 되돌린다
   $needWidth = @($lay.cols | Where-Object { [Math]::Abs($ws.Columns($_).ColumnWidth - $script:ContentColWidth) -gt 0.01 })
   if ($needWidth.Count -gt 0) {
     $sizes = @(); foreach ($sh in $ws.Shapes) { try { $sizes += @{ s = $sh; w = $sh.Width; h = $sh.Height } } catch {} }
@@ -412,6 +442,7 @@ function Process-Sheet($ws, $lay, $stats) {
         $t = [string]$v
         if ($t.Trim() -ne '') {
           $p = Parse-Line $t; $p.row = $r; $p.cell = $ws.Cells($r, $col)
+          Resolve-SymbolBullet $p
           $p.gap = $(if ($anchor) { $r - $lastContent - 1 } else { 0 })
           if (-not $anchor) { $anchor = $r }
           $lastContent = $r
@@ -515,6 +546,9 @@ function Process-Sheet($ws, $lay, $stats) {
           }
           default { $txt = $it.raw; $font = $null; $boff = 0 }
         }
+        # 네오현대에 없는 가운뎃점(∙ U+2219)은 있는 모양(· U+00B7)으로 바꾼다 (글자 수 같음)
+        $txt = $txt.Replace([string][char]0x2219, [string][char]0x00B7)
+        if ($wrapable) { $it.body = $it.body.Replace([string][char]0x2219, [string][char]0x00B7) }
         $pieces = $null
         if ($wrapable -and -not $it.cell.WrapText) {
           # 칸 너비를 넘으면 아랫줄로 내린다 (윗줄 글자 시작 위치에 맞춰 들여쓰기)
@@ -608,17 +642,21 @@ function Process-Sheet($ws, $lay, $stats) {
             }
           }
         } else {
-          # 대괄호 제목 / ※ 메모는 내용·서식 그대로
+          # 대괄호 제목 / ※ 메모: 글자는 그대로 두고 글꼴만 통일 (대괄호 제목 = 네오현대 B, 그 밖 = 네오현대 L).
+          # 색·밑줄 등은 원래대로 유지한다
+          $uni = $(if ($o.lvl -eq 'BR') { $script:FB } else { $script:FL })
+          $cf = $cell.Font; $cf.Name = $uni; $cf.Bold = $false
+          Set-FontProp $cf 'Size' $fmt.size; Set-FontProp $cf 'Color' $fmt.color
+          Set-FontProp $cf 'Italic' $fmt.it; Set-FontProp $cf 'Underline' $fmt.ul; Set-FontProp $cf 'Strikethrough' $fmt.st
           if ($fmt.chars) {
-            for ($k = 0; $k -lt $o.txt.Length; $k++) {
-              $ch = $fmt.chars[$k]; $tf = $cell.Characters($k + 1, 1).Font
-              Set-FontProp $tf 'Size' $ch[0]; Set-FontProp $tf 'Color' $ch[1]; Set-FontProp $tf 'Underline' $ch[2]; Set-FontProp $tf 'Strikethrough' $ch[3]
-              Set-FontProp $tf 'Italic' $ch[4]; Set-FontProp $tf 'Name' $ch[5]; Set-FontProp $tf 'Bold' $ch[6]
+            for ($k = 0; $k -lt $o.txt.Length -and $k -lt $fmt.chars.Count; $k++) {
+              $ch = $fmt.chars[$k]
+              if (($ch[1] -ne $fmt.color) -or ($ch[0] -ne $fmt.size) -or ($ch[2] -ne -4142) -or $ch[3] -or $ch[4]) {
+                $tf = $cell.Characters($k + 1, 1).Font
+                Set-FontProp $tf 'Size' $ch[0]; Set-FontProp $tf 'Color' $ch[1]; Set-FontProp $tf 'Underline' $ch[2]
+                Set-FontProp $tf 'Strikethrough' $ch[3]; Set-FontProp $tf 'Italic' $ch[4]
+              }
             }
-          } else {
-            $cf = $cell.Font
-            Set-FontProp $cf 'Name' $fmt.name; Set-FontProp $cf 'Size' $fmt.size; Set-FontProp $cf 'Color' $fmt.color
-            Set-FontProp $cf 'Bold' $fmt.bold; Set-FontProp $cf 'Italic' $fmt.it; Set-FontProp $cf 'Underline' $fmt.ul; Set-FontProp $cf 'Strikethrough' $fmt.st
           }
         }
         $r++
@@ -638,7 +676,7 @@ function Convert-WeeklyReport($Excel, [string]$InPath, [string]$OutDir, [string]
       $lay = Find-Layout $ws
       if ($lay) { $cands += @{ ws = $ws; lay = $lay } }
     }
-    if ($cands.Count -eq 0) { throw "'전주 / 금주' 머리글이 있는 시트를 찾지 못했습니다." }
+    if ($cands.Count -eq 0) { throw "'전주 / 금주' 또는 '금주 / 차주' 머리글이 있는 시트를 찾지 못했습니다." }
     if ($cands.Count -gt 3) {
       $act = $wb.ActiveSheet
       $pick = @($cands | Where-Object { $_.ws.Name -eq $act.Name })
