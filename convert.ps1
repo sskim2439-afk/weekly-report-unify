@@ -109,7 +109,7 @@ $script:TypoRules = @(
   @('수주률', '수주율'), @('갱신률', '갱신율'), @('해지률', '해지율'), @('납부률', '납부율'), @('개선률', '개선율'),
   @('인하률', '인하율'), @('진도률', '진도율'),
   # 자주 틀리는 일반 단어
-  @('피트백', '피드백'), @('헷지', '헤지'), @('댓가', '대가'), @('촛점', '초점'), @('싯가', '시가'),
+  @('피트백', '피드백'), @('헷지', '헤지'), @('갯선', '개선'), @('댓가', '대가'), @('촛점', '초점'), @('싯가', '시가'),
   @('내노라', '내로라'), @('닥달', '닦달'), @('덥썩', '덥석'), @('움추', '움츠'), @('안밖', '안팎'),
   @('오랜동안', '오랫동안'), @('짜집기', '짜깁기'), @('설겆이', '설거지'), @('어줍잖', '어쭙잖'), @('어떡게', '어떻게'),
   @('([가-힣]?[할될줄올갈릴볼알낼울킬])께(?=요|[\s,.)!?]|$)', '$1게'),
@@ -131,6 +131,8 @@ $script:SuspectRules = @(
   @('(?<![가-힣])왠(?=\s)', '{0} (웬?)'),
   @('(?<![0-9가-힣])년차', '{0} (연차?)'),
   @('(?<=[가-힣])(을을|를를|는는|에에서)', '{0} (조사 반복?)'),
+  # '의'를 '이'로 잘못 쓴 경우: 협이(협의), 회이(회의), 논이(논의), 합이(합의), 토이(토의)
+  @('(?<![가-힣])(협|회|논|합|토)이(?=[\s,.)/]|$)', '{0} (의→이?)'),
   @('(?<![가-힣A-Za-z0-9])([가-힣A-Za-z0-9]{2,})\s+\1(?![가-힣A-Za-z0-9])', '{0} (같은 단어 반복?)')
 )
 
@@ -148,6 +150,14 @@ $script:Vocab = @'
 상무 전무 부장 차장 과장 대리 사원 매니저 직원 임직원 근로자 담당자 책임자 관리자 결정 판단 논의 마무리 시행 착수 착공 준공 개시 종료 연장
 만기 재계약 해지 취소 보류 지연 단축 조율 협상 제안 입찰 낙찰 선정 평가표 심사 실사 진단 컨설팅 용역 위탁 수탁 인센티브 성과급 급여 임금
 수당 휴가 근태 출근 퇴근 수익률 점유율 달성률 진행률 가동률 출하율 처리율 전환율 회수율 증가율 감소율 원가율 이익률 성장률 계약률
+갱신 활동 활용 정리 처리 협력 기술 품목 단계 방향 방식 방법 내용 사항 상황 문제 원인 대책 효과 효율 비율 규모 수준 개선안 방안 대안 초안
+수정안 계획안 검토안 보고안 개정안 기획 기획안 기획서 제안서 견적서 보고서 결과서 계획서 요청서 확인서 신청서 공문 회신 문의 답변 질의 설명
+설명회 간담회 워크숍 교육과정 참석자 대상자 담당자 실무자 협의체 위원회 대응 대처 해결 처리중 검토중 작업 작업자 인력 충원 배치 배정
+분석 분류 조정 조회 집계 산출 산정 추정 예측 전망 목표치 실적치 증감 누계 월간 주간 연간 분기 상반기 하반기 금주 차주 전주 익월 당월 전월
+연초 연말 연내 연중 상시 수시 지속 계속 유지보수 정기점검 안전점검 현장점검 품질관리 원가관리 공정관리 일정관리 고객관리 자산 부채 매입 매각
+지분 배당 증자 감자 차입 상환 이자 수수료 보험 보증 담보 계좌 송금 입금 출금 잔액 미수금 미지급 선급금 잔금 계약금 중도금 정산금 인건비
+편성 배분 배부 편입 편제 구성 구분 선별 선발 모집 공모 응모 접견 면담 상담 자문 의견 의뢰 요구 요청사항 지시 지시사항 전달 공지사항 회의자료
+경비 판관비 제조원가 재료비 노무비 외주비 운반비 설치비 공사비 유지비 관리비 수선비 교체비 견적가 단가표 단가인상 가격 가격인상 인하 할인
 '@ -split '\s+' | Where-Object { $_ } | Sort-Object Length -Descending
 
 # 맞춤법 검사기가 모르는 업계 용어·외래어 (노란색 표시에서 제외)
@@ -184,6 +194,17 @@ public static class JamoNear2 {
 $script:VocabArr = [string[]]$script:Vocab
 $script:SpellCache = @{}
 
+# 단어 뒤에 붙어 합성어를 만드는 흔한 꼬리말 (갯선'안', 수주'건', 견적'서', 영업'팀' …)
+$script:Suffixes = @{}
+'안 건 서 표 팀 율 률 비 별 용 중 차 상 시 액 금 일 자 사 처 품 기 회 계 화 성 적 부 실 과 원 점 지 내 외 간 후 전 등 류 형 식 방 분 량 수 가 도 제 장 소 측 단 반 조 체' -split ' ' | ForEach-Object { $script:Suffixes[$_] = 1 }
+
+# 맞춤법 검사 결과를 기억해 두고 같은 단어는 다시 묻지 않는다
+$script:SpellOk = @{}
+function Test-Spell([string]$w, $app) {
+  if (-not $script:SpellOk.ContainsKey($w)) { $ok = $true; try { $ok = [bool]$app.CheckSpelling($w) } catch {}; $script:SpellOk[$w] = $ok }
+  return $script:SpellOk[$w]
+}
+
 # 애매한 오탈자 후보를 찾는다 (고치지 않음). 반환: '헌황→현황?' 같은 설명 목록
 function Find-Suspects([string]$s, $app) {
   $res = New-Object System.Collections.ArrayList
@@ -198,10 +219,25 @@ function Find-Suspects([string]$s, $app) {
       $stems = @($tok) + @($script:Particles | Where-Object { $tok.EndsWith($_) -and $tok.Length - $_.Length -ge 2 } | ForEach-Object { $tok.Substring(0, $tok.Length - $_.Length) })
       foreach ($st in $stems) {
         if ($script:SpellAllow.ContainsKey($st)) { break }
-        $ok = $true; try { $ok = [bool]$app.CheckSpelling($st) } catch {}
-        if ($ok) { continue }
+        if (Test-Spell $st $app) { continue }
         $w = [JamoNear2]::Find($st, $script:VocabArr)
         if ($w) { $hit = "$st→$w"; break }
+        # 합성어: 앞/뒤로 나눠서 한쪽이 업무 단어와 자모 한 개만 다르고, 다른 쪽이 흔한 꼬리말이거나 맞는 단어면 의심
+        #   예) 갯선안 = 갯선(→개선) + 안 / 사업계휙 = 사업 + 계휙(→계획)
+        for ($k = 2; $k -le $st.Length - 1 -and -not $hit; $k++) {
+          $head = $st.Substring(0, $k); $tail = $st.Substring($k)
+          if ($script:SpellAllow.ContainsKey($head) -or $script:SpellAllow.ContainsKey($tail)) { continue }
+          $tailOk = $script:Suffixes.ContainsKey($tail) -or ($tail.Length -ge 2 -and (Test-Spell $tail $app))
+          if ($tailOk -and -not (Test-Spell $head $app)) {
+            $w = [JamoNear2]::Find($head, $script:VocabArr)
+            if ($w) { $hit = "$st→$w$tail" }
+          }
+          if (-not $hit -and $tail.Length -ge 2 -and (Test-Spell $head $app) -and -not (Test-Spell $tail $app)) {
+            $w = [JamoNear2]::Find($tail, $script:VocabArr)
+            if ($w) { $hit = "$st→$head$w" }
+          }
+        }
+        if ($hit) { break }
       }
       $script:SpellCache[$tok] = $hit
     }
