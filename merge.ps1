@@ -23,7 +23,7 @@ $script:SheetSpecs = @{
           titleH = 26.3; gapH = 30; hdrH = 25.2; bodyH = 21.8; labelSize = 11; margins = @(17, 17, 53.9, 53.9); center = $true }
   s2 = @{ name = '전략담당 (금주 팀별)'; title = '현대 E/L 주간업무보고 (전략담당, 경영전략본부 직속 금주 팀별)'; titleSize = 15
           widths = @(1.2, 9.9, 80.2, 80.2, 0, 1.2); lab = 2; c1 = 3; c2 = 4; note = 5; lastCol = 6; firstCol = 1
-          titleH = 26.3; gapH = 30; hdrH = 25.2; bodyH = 23.3; labelSize = 10; margins = @(17, 17, 53.9, 53.9); center = $true }
+          titleH = 26.3; gapH = 30; hdrH = 25.2; bodyH = 23.3; labelSize = 11; margins = @(17, 17, 53.9, 53.9); center = $true }
   s3 = @{ name = '금주 요약본'; title = '현대 E/L 주간업무보고 (경영전략본부 금주 요약본)'; titleSize = 15
           widths = @(4.5, 1.2, 9.9, 80.2, 80.2, 0, 1.2); lab = 3; c1 = 4; c2 = 5; note = 6; lastCol = 7; firstCol = 2
           titleH = 26.3; gapH = 30; hdrH = 25.2; bodyH = 21; labelSize = 11; margins = @(17, 17, 53.9, 53.9); center = $true }
@@ -339,6 +339,8 @@ function Complete-Labels($ws, $sp, [int]$first, [int]$last) {
     $e = $r; while ($e + 1 -le $last -and (& $markAt ($e + 1)) -eq $m) { $e++ }
     # 원본에서 딸려 온 테두리는 지우고 이 양식의 테두리만 그린다
     $ws.Range($ws.Cells($r, $sp.lab), $ws.Cells($e, $(if ($sp.note) { $sp.note } else { $sp.c2 }))).Borders.LineStyle = -4142
+    # 병합 결과 본문은 글자 크기 11로 통일 (원본마다 크기가 달라도)
+    $ws.Range($ws.Cells($r, $sp.lab), $ws.Cells($e, $sp.c2)).Font.Size = [double]11
     $lr = $ws.Range($ws.Cells($r, $sp.lab), $ws.Cells($e, $sp.lab)); [void]$lr.Merge()
     $lr.Value2 = ($m -split '\|', 3)[2]; $lr.Font.Name = '네오현대 B'; $lr.Font.Size = [double]$sp.labelSize
     $lr.HorizontalAlignment = -4108; $lr.VerticalAlignment = -4108; $lr.WrapText = $true
@@ -361,6 +363,7 @@ function Write-Dropped($ws, $sp, [int]$row, $dropped) {
     # 한 덩어리는 원본에서 이어진 줄이므로 한 번에 복사한다
     $x = $band[0]; $n = $band.Count
     [void]$x.ws.Range($x.ws.Cells($x.r, $x.c1), $x.ws.Cells($x.r + $n - 1, $x.c2)).Copy($ws.Cells($r, $oc))
+    $ws.Range($ws.Cells($r, $oc), $ws.Cells($r + $n - 1, $oc + 1)).Font.Size = [double]11
     $r += $n + 1
   }
 }
@@ -470,7 +473,10 @@ function Merge-Company($Excel, $files, [string]$outDir, [string]$dateTag) {
     # 디지털전략본부: 그 파일의 요약 시트를 그대로 별도 시트로
     if ($sum['디지털전략본부']) {
       [void]$sum['디지털전략본부'].ws.Copy([Type]::Missing, $wb.Worksheets.Item($wb.Worksheets.Count))
-      $wb.Worksheets.Item($wb.Worksheets.Count).Name = '디지털전략본부'
+      $dws = $wb.Worksheets.Item($wb.Worksheets.Count); $dws.Name = '디지털전략본부'
+      # 본문 글자 크기 11로 통일 (제목·머리글은 그대로)
+      $dl = Find-Layout $dws
+      if ($dl) { $dws.Range($dws.Cells($dl.start, $dl.lab), $dws.Cells($dws.UsedRange.Row + $dws.UsedRange.Rows.Count - 1, $dl.cols[1])).Font.Size = [double]11 }
     }
     [void]$wb.Worksheets.Item(1).Activate()
     $outName = "전사_주간업무보고_$dateTag.xlsx"; $outPath = Join-Path $outDir $outName
