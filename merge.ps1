@@ -37,8 +37,11 @@ $script:CompanyPages = @(
   @{ blocks = @(@{ label = '안전지원실'; parts = @('안전지원실') }, @{ label = '한국사업본부'; parts = @('한국사업본부') }); max = 0 },
   @{ blocks = @(@{ label = '해외사업본부'; parts = @('해외사업본부') }, @{ label = '서비스사업본부'; parts = @('서비스본부') }); max = 0 },
   @{ blocks = @(@{ label = '경영전략본부'; parts = @('경영전략본부') }); max = 0 },
-  # 경영지원본부 = 구매 → 인사노무 → 경영지원본부 순서로 합치고, 2쪽을 넘으면 덜 중요한 내용을 표 밖으로 뺀다
-  @{ blocks = @(@{ label = '경영지원본부'; parts = @('구매담당', '인사노무담당', '경영지원본부'); brackets = @{ '구매담당' = '[구매담당]'; '인사노무담당' = '[인사/노무담당]' } }); max = 2 },
+  # 경영지원본부: [기획재무] → [구매] → [영업관리/커뮤니케이션] → [준법] → [인사/노무] 순서가 되도록
+  # 경영지원본부 파일 안의 '기획재무' 덩어리 뒤에 구매, '준법' 덩어리 뒤에 인사노무를 끼워 넣는다. 2쪽을 넘으면 덜 중요한 내용을 표 밖으로
+  @{ blocks = @(@{ label = '경영지원본부'; parts = @('경영지원본부')
+                   inserts = @(@{ part = '구매담당'; bracket = '[구매담당]'; after = '기획재무'; atEnd = $false }
+                               @{ part = '인사노무담당'; bracket = '[인사/노무담당]'; after = '준법'; atEnd = $true }) }); max = 2 },
   @{ blocks = @(@{ label = '생산본부'; parts = @('생산본부') }, @{ label = '설치본부'; parts = @('설치본부') }); max = 0 }
 )
 $script:StrategyOrder = @('경영관리팀', '원가관리팀', 'CE팀', 'ESG경영팀', '해외경영관리팀')
@@ -128,7 +131,7 @@ function Add-SourceRows([System.Collections.ArrayList]$plan, $rs, $r0, $r1, [ref
     if (-not $t1 -and -not $t2) { [void]$plan.Add(@{ k = 'blank'; ws = $ws; r = $r; c1 = $c1; c2 = $c2 }); $prevBlank = $true; continue }
     # 원본 안의 [대괄호 제목] 줄은 혼자 한 덩어리 (표 밖으로 빼지 않음)
     $isBr = ($t1 -match '^\[' -or $t2 -match '^\[') -and ($t1 -eq '' -or $t1 -match '^\[') -and ($t2 -eq '' -or $t2 -match '^\[')
-    if ($isBr) { [void]$plan.Add(@{ k = 'src'; ws = $ws; r = $r; c1 = $c1; c2 = $c2; band = 0 }); $prevBlank = $true; continue }
+    if ($isBr) { [void]$plan.Add(@{ k = 'src'; ws = $ws; r = $r; c1 = $c1; c2 = $c2; band = 0; t = "$t1 $t2" }); $prevBlank = $true; continue }
     if ($prevBlank) { $band = ++$bandSeq.Value }
     [void]$plan.Add(@{ k = 'src'; ws = $ws; r = $r; c1 = $c1; c2 = $c2; band = $band; t = "$t1 $t2" })
     $prevBlank = $false
@@ -181,6 +184,33 @@ function Remove-Band([System.Collections.ArrayList]$plan, $band) {
   $out = @(); for ($i = $band.first; $i -le $band.last; $i++) { $out += $plan[$band.first] ; $plan.RemoveAt($band.first) }
   if ($band.first -lt $plan.Count -and $plan[$band.first].k -eq 'blank' -and $band.first -gt 0 -and $plan[$band.first - 1].k -eq 'blank') { $plan.RemoveAt($band.first) }
   return , $out
+}
+
+# 다른 파일의 내용을 [제목]과 함께 줄 목록으로 만든다 (블록 안에 끼워 넣을 때 사용)
+function New-SubRows($rs, [string]$bracket, [ref]$bandSeq) {
+  $l = New-Object System.Collections.ArrayList
+  [void]$l.Add(@{ k = 'text'; text = $bracket; band = 0 })
+  $first = $true
+  foreach ($p in (Read-Parts $rs)) { if (-not $first) { [void]$l.Add(@{ k = 'blank' }) }; $first = $false; Add-SourceRows $l $rs $p.r0 $p.r1 $bandSeq }
+  return , $l
+}
+
+# $rows를 $plan 안에서 '$after' 글자가 든 [제목] 덩어리 바로 뒤(다음 [제목] 앞)에 끼워 넣는다.
+# 그런 제목이 없으면 $atEnd에 따라 맨 끝 / 맨 앞에 넣는다
+function Add-IntoPlan([System.Collections.ArrayList]$plan, $rows, [string]$after, [bool]$atEnd) {
+  $isHead = { param($x) $x.k -eq 'text' -or ($x.k -eq 'src' -and $x.band -eq 0) }
+  $headText = { param($x) [string]$(if ($x.k -eq 'text') { $x.text } else { $x.t }) }
+  $pos = -1
+  for ($i = 0; $i -lt $plan.Count; $i++) { if ((& $isHead $plan[$i]) -and (& $headText $plan[$i]) -match $after) { $pos = $i; break } }
+  $ins = New-Object System.Collections.ArrayList
+  if ($pos -ge 0) {
+    $j = $pos + 1; while ($j -lt $plan.Count -and -not (& $isHead $plan[$j])) { $j++ }
+    if ($j -lt $plan.Count) { $ins.AddRange($rows); [void]$ins.Add(@{ k = 'blank' }) }          # 다음 [제목] 앞에: 내용 + 빈 줄
+    else { $j = $plan.Count - 1; [void]$ins.Add(@{ k = 'blank' }); $ins.AddRange($rows) }      # 맨 끝 빈 줄 앞에: 빈 줄 + 내용
+  } elseif ($atEnd) { $j = $plan.Count - 1; [void]$ins.Add(@{ k = 'blank' }); $ins.AddRange($rows) }
+  else { $j = 1; $ins.AddRange($rows); [void]$ins.Add(@{ k = 'blank' }) }                         # 맨 앞 빈 줄 다음에
+  $plan.InsertRange($j, $ins)
+  Remove-EmptyHeads $plan
 }
 
 # 아래 내용이 모두 빠져 제목만 남은 [대괄호] 줄과, 겹친 빈 줄을 지운다
@@ -418,8 +448,10 @@ function Merge-Company($Excel, $files, [string]$outDir, [string]$dateTag) {
       Write-PageHeader $ws $sp $row $dates; $row += 5; $first = $false
       $plans = @(); $total = 0
       foreach ($blk in $pg.blocks) {
-        $srcs = @(); foreach ($part in $blk.parts) { if ($sum[$part]) { $srcs += @{ rs = $sum[$part]; bracket = $(if ($blk.brackets) { $blk.brackets[$part] }) } } }
-        $plan = New-BlockPlan $srcs ([ref]$bandSeq); $plans += @{ label = $blk.label; plan = $plan }; $total += $plan.Count
+        $srcs = @(); foreach ($part in $blk.parts) { if ($sum[$part]) { $srcs += @{ rs = $sum[$part] } } }
+        $plan = New-BlockPlan $srcs ([ref]$bandSeq)
+        foreach ($in in @($blk.inserts)) { if ($in -and $sum[$in.part]) { Add-IntoPlan $plan (New-SubRows $sum[$in.part] $in.bracket ([ref]$bandSeq)) $in.after $in.atEnd } }
+        $plans += @{ label = $blk.label; plan = $plan }; $total += $plan.Count
       }
       $dropped = @()
       if ($pg.max -gt 0 -and $cap -gt 0) {

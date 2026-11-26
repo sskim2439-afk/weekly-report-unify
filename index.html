@@ -32,7 +32,13 @@
       radial-gradient(circle at 95% 100%, #e2f6ef 0, transparent 40%),
       var(--bg);
   }
-  .wrap { max-width: 1240px; margin: 0 auto; padding: 32px 24px 48px; }
+  .wrap { max-width: 1460px; margin: 0 auto; padding: 32px 24px 48px; }
+  .layout { display: grid; grid-template-columns: 190px 1fr; gap: 28px; align-items: start; }
+  .side { position: sticky; top: 24px; display: flex; flex-direction: column; gap: 8px; padding: 14px; background: var(--card); border-radius: 28px; box-shadow: var(--shadow); }
+  .tab { border: 0; cursor: pointer; font: inherit; font-size: 15px; text-align: left; padding: 14px 16px; border-radius: 18px; background: transparent; color: var(--sub); display: flex; gap: 10px; align-items: center; }
+  .tab:hover { background: var(--bg); color: var(--ink); }
+  .tab.active { background: var(--accent-soft); color: var(--accent); }
+  .view[hidden] { display: none !important; }
 
   header { display: flex; align-items: center; gap: 16px; margin-bottom: 28px; }
   .logo {
@@ -148,9 +154,9 @@
 
   /* 글꼴: 일반 글자는 네오현대 R(400), 제목·버튼·강조는 네오현대 B(700) */
   input, button { font-family: var(--font); }
-  h1, h2, b, .btn, .item .fname, .chip, .count, .namebox input, .drop b, .version b { font-family: var(--font) !important; font-weight: 700 !important; }
+  h1, h2, b, .btn, .tab, .item .fname, .chip, .count, .namebox input, .drop b, .version b { font-family: var(--font) !important; font-weight: 700 !important; }
 
-  .merge-board { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; margin-top: 28px; }
+  .merge-board { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; }
   .card.merge { min-height: 0; }
   .small-drop { padding: 20px 16px; }
   .slots { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
@@ -164,6 +170,8 @@
 
   @media (max-width: 900px) {
     .merge-board { grid-template-columns: 1fr; gap: 16px; }
+    .layout { grid-template-columns: 1fr; }
+    .side { position: static; flex-direction: row; }
     .board { grid-template-columns: 1fr; gap: 16px; }
     .arrow span { transform: rotate(90deg); }
     .card { min-height: 0; }
@@ -188,7 +196,14 @@
     </div>
   </header>
 
-  <main class="board">
+  <div class="layout">
+  <!-- 왼쪽 사이드바: 화면 전환 (스크롤 없이 한 화면씩) -->
+  <nav class="side">
+    <button class="tab active" data-tab="unify">🧹 <span>양식 통일</span></button>
+    <button class="tab" data-tab="merge">🧩 <span>파일 병합</span></button>
+  </nav>
+  <div class="views">
+  <main class="board view" data-view="unify">
     <section class="card">
       <div class="card-head">
         <div class="badge before">📥</div>
@@ -233,7 +248,7 @@
   </main>
 
   <!-- 통합: 양식 통일된 파일들을 하나로 합친다 -->
-  <section class="merge-board">
+  <section class="merge-board view" data-view="merge" hidden>
     <section class="card merge" data-kind="strategy">
       <div class="card-head">
         <div class="badge before">🧩</div>
@@ -273,6 +288,8 @@
       <div data-result></div>
     </section>
   </section>
+  </div>
+  </div>
 </div>
 
 <div class="toast" id="toast"></div>
@@ -488,6 +505,12 @@ document.querySelectorAll('.card.merge').forEach(card => {
 });
 const redrawMerge = () => document.querySelectorAll('.card.merge').forEach(c => c.redraw && c.redraw());
 setInterval(redrawMerge, 5000);
+
+// 사이드바: 누른 화면만 보여 준다
+document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
+  document.querySelectorAll('.tab').forEach(x => x.classList.toggle('active', x === t));
+  document.querySelectorAll('.view').forEach(v => { v.hidden = v.dataset.view !== t.dataset.tab; });
+});
 
 render(); ping(); setInterval(ping, 5000);
 </script>
