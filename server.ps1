@@ -3,6 +3,10 @@
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'convert.ps1')
+# 통합 기능은 merge.ps1이 있을 때만 (자동 업데이트 도중 아직 못 받은 PC에서도 양식 통일은 되도록)
+$mergeReady = Test-Path (Join-Path $here 'merge.ps1')
+if ($mergeReady) { . (Join-Path $here 'merge.ps1') }
+$staged = @{}
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.Web
 
@@ -10,6 +14,7 @@ $work = Join-Path $env:TEMP 'weekly-unify'
 if (Test-Path $work) { Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue }
 New-Item -ItemType Directory -Force (Join-Path $work 'in') | Out-Null
 New-Item -ItemType Directory -Force (Join-Path $work 'out') | Out-Null
+New-Item -ItemType Directory -Force (Join-Path $work 'stage') | Out-Null
 
 $jobs = @{}
 $script:xl = $null
@@ -119,6 +124,46 @@ function Handle($req, $ns) {
         Send-Json $ns @{ ok = $false; original = $orig; error = ('{0} ({1})' -f $_.Exception.Message, $where) }
       }
     }
+    '^/api/merge/stage$' {
+      # 통합할 파일 하나를 받아 두고 어느 자리(팀/본부)인지 알려 준다
+      $orig = [Uri]::UnescapeDataString([string]$req.headers['x-file-name']); $kind = [string]$req.query['kind']
+      if (-not $mergeReady) { Send-Json $ns @{ ok = $false; error = '통합 기능 파일(merge.ps1)이 아직 없습니다. 도구를 다시 실행해 주세요.' }; return }
+      if ($kind -notin @('strategy', 'company')) { Send-Json $ns @{ ok = $false; error = '알 수 없는 통합 종류' }; return }
+      $ext = [IO.Path]::GetExtension($orig).ToLower()
+      if ($ext -notin @('.xlsx', '.xls', '.xlsm')) { Send-Json $ns @{ ok = $false; error = '엑셀 파일만 넣을 수 있습니다.' }; return }
+      $sid = [guid]::NewGuid().ToString('N'); $dir = Join-Path $work "stage\$sid"; New-Item -ItemType Directory -Force $dir | Out-Null
+      # 엑셀은 이름이 같은 파일을 동시에 못 여므로 파일마다 고유한 이름을 붙인다
+      $path = Join-Path $dir ("src_$sid" + $ext); [IO.File]::WriteAllBytes($path, $req.body)
+      try {
+        # 통합에 쓸 시트만 남긴 가벼운 사본을 만들어 두면 통합이 빨라진다
+        $slim = Join-Path $dir "slim_$sid.xlsx"
+        $s = Get-MergeSlot (Get-Excel) $path $orig $kind $slim
+        $staged[$sid] = @{ path = $(if (Test-Path $slim) { $slim } else { $path }); slot = $s.slot; kind = $kind }
+        if (-not $s.slot) { Send-Json $ns @{ ok = $false; sid = $sid; error = "어느 팀/본부 파일인지 알 수 없습니다 (부서명: $($s.dept)). 파일 이름에 팀/본부 이름을 넣어 주세요." }; return }
+        Send-Json $ns @{ ok = $true; sid = $sid; slot = $s.slot; dept = $s.dept }
+      } catch { try { $null = $script:xl.Version } catch { $script:xl = $null }; Send-Json $ns @{ ok = $false; error = $_.Exception.Message } }
+    }
+    '^/api/merge/run$' {
+      $q = $utf8.GetString($req.body) | ConvertFrom-Json
+      $kind = [string]$q.kind; $files = @{}
+      foreach ($sid in @($q.sids)) { if ($staged.ContainsKey($sid) -and $staged[$sid].kind -eq $kind -and $staged[$sid].slot) { $files[$staged[$sid].slot] = $staged[$sid].path } }
+      $need = @($script:MergeSlots[$kind].Keys)
+      $missing = @($need | Where-Object { -not $files.ContainsKey($_) })
+      if ($missing.Count) { Send-Json $ns @{ ok = $false; error = '아직 없는 파일: ' + ($missing -join ', ') }; return }
+      $id = [guid]::NewGuid().ToString('N'); $outDir = Join-Path $work "out\$id"; New-Item -ItemType Directory -Force $outDir | Out-Null
+      try {
+        $fn = $(if ($kind -eq 'strategy') { 'Merge-Strategy' } else { 'Merge-Company' })
+        $res = & $fn (Get-Excel) $files $outDir (Get-Date -Format 'yyMMdd')
+        $jobs[$id] = $res.outPath
+        Write-Host ("  통합 완료: {0}" -f $res.outName)
+        Send-Json $ns @{ ok = $true; id = $id; outName = $res.outName; warnings = @($res.warnings) }
+      } catch {
+        Write-Host ("  통합 실패: {0}" -f $_.Exception.Message) -ForegroundColor Red; Write-Host $_.ScriptStackTrace -ForegroundColor DarkGray
+        try { $null = $script:xl.Version } catch { $script:xl = $null }
+        $where = '{0} {1}번째 줄' -f [IO.Path]::GetFileName($_.InvocationInfo.ScriptName), $_.InvocationInfo.ScriptLineNumber
+        Send-Json $ns @{ ok = $false; error = ('{0} ({1})' -f $_.Exception.Message, $where) }
+      }
+    }
     '^/api/download$' {
       $id = $req.query['id']; $name = Get-SafeName ([string]$req.query['name'])
       if (-not $jobs.ContainsKey($id)) { Send-Json $ns @{ ok = $false; error = '파일을 찾을 수 없습니다.' } 404; return }
@@ -155,7 +200,7 @@ if (-not $listener) { Write-Host '사용 가능한 포트를 찾지 못했습니
 
 $url = "http://localhost:$port/"
 Write-Host ''
-Write-Host '  주간업무보고 양식 통일 도구가 실행 중입니다.' -ForegroundColor Cyan
+Write-Host '  주간업무보고 자동화 도구가 실행 중입니다.' -ForegroundColor Cyan
 Write-Host "  주소: $url"
 Write-Host '  사용이 끝나면 화면의 [도구 종료] 버튼을 누르거나 이 창을 닫아 주세요.'
 Write-Host ''

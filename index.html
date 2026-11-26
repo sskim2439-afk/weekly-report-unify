@@ -150,7 +150,20 @@
   input, button { font-family: var(--font); }
   h1, h2, b, .btn, .item .fname, .chip, .count, .namebox input, .drop b, .version b { font-family: var(--font) !important; font-weight: 700 !important; }
 
+  .merge-board { display: grid; grid-template-columns: 1fr 1fr; gap: 64px; margin-top: 28px; }
+  .card.merge { min-height: 0; }
+  .small-drop { padding: 20px 16px; }
+  .slots { list-style: none; margin: 16px 0 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .slots li { display: flex; align-items: center; gap: 8px; padding: 9px 12px; border-radius: 14px; background: var(--bg); font-size: 13px; min-width: 0; }
+  .slots li .nm { font-family: var(--font); font-weight: 700; flex: none; }
+  .slots li .fn { color: var(--sub); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .slots li.ok { background: var(--mint-soft); }
+  .slots li.run { background: var(--accent-soft); }
+  .merge .err { font-size: 12px; color: var(--red); margin-top: 10px; }
+  .merge [data-result] .item { margin-top: 12px; }
+
   @media (max-width: 900px) {
+    .merge-board { grid-template-columns: 1fr; gap: 16px; }
     .board { grid-template-columns: 1fr; gap: 16px; }
     .arrow span { transform: rotate(90deg); }
     .card { min-height: 0; }
@@ -164,8 +177,8 @@
   <header>
     <div class="logo">📋</div>
     <div>
-      <h1>주간업무보고 양식 통일</h1>
-      <p>파일을 넣으면 글머리 기호(🗸 · - · ·)와 글꼴을 통일한 새 파일을 만들어 드려요.</p>
+      <h1>주간업무보고 자동화</h1>
+      <p>양식 통일 · 경영전략본부 통합 · 전사 통합을 한 곳에서 해요.</p>
     </div>
     <div class="head-right">
       <!-- 날짜는 도구가 알려준다: GitHub에 마지막으로 올린 날짜 (없으면 도구 파일을 마지막으로 고친 날짜) -->
@@ -218,10 +231,52 @@
       </div>
     </section>
   </main>
+
+  <!-- 통합: 양식 통일된 파일들을 하나로 합친다 -->
+  <section class="merge-board">
+    <section class="card merge" data-kind="strategy">
+      <div class="card-head">
+        <div class="badge before">🧩</div>
+        <h2>경영전략본부 통합</h2>
+        <span class="count" data-count>0/6</span>
+      </div>
+      <div class="drop small-drop" data-drop>
+        <b>6개 팀 파일을 끌어다 놓으세요</b>
+        <small>양식 통일된 파일 · 팀 이름은 자동으로 알아봐요</small>
+        <input type="file" multiple accept=".xlsx,.xls,.xlsm" hidden data-picker>
+      </div>
+      <ul class="slots" data-slots></ul>
+      <div class="foot">
+        <button class="btn ghost" data-clear>비우기</button>
+        <span class="grow"></span>
+        <button class="btn primary" data-run disabled>🧩 통합하기</button>
+      </div>
+      <div data-result></div>
+    </section>
+    <section class="card merge" data-kind="company">
+      <div class="card-head">
+        <div class="badge after">🏢</div>
+        <h2>전사 통합</h2>
+        <span class="count" data-count>0/11</span>
+      </div>
+      <div class="drop small-drop" data-drop>
+        <b>11개 본부 파일을 끌어다 놓으세요</b>
+        <small>각 파일의 요약본 시트를 모아요 · 본부 이름은 자동으로 알아봐요</small>
+        <input type="file" multiple accept=".xlsx,.xls,.xlsm" hidden data-picker>
+      </div>
+      <ul class="slots" data-slots></ul>
+      <div class="foot">
+        <button class="btn ghost" data-clear>비우기</button>
+        <span class="grow"></span>
+        <button class="btn mint" data-run disabled>🏢 통합하기</button>
+      </div>
+      <div data-result></div>
+    </section>
+  </section>
 </div>
 
 <div class="toast" id="toast"></div>
-<div class="overlay" id="bye"><div><div style="font-size:40px">👋</div><h2>도구를 종료했어요</h2><p style="color:var(--sub)">다시 쓰려면 <b>양식통일_시작.bat</b>을 실행해 주세요.</p></div></div>
+<div class="overlay" id="bye"><div><div style="font-size:40px">👋</div><h2>도구를 종료했어요</h2><p style="color:var(--sub)">다시 쓰려면 <b>주간업무보고_자동화.bat</b>을 실행해 주세요.</p></div></div>
 
 <script>
 const $ = (id) => document.getElementById(id);
@@ -310,7 +365,7 @@ async function runAll() {
       if (j.ok) { it.status = 'done'; it.result = j; it.name = j.outName.replace(/\.xlsx$/i, ''); }
       else { it.status = 'fail'; it.error = j.error || '알 수 없는 오류'; }
     } catch (e) {
-      it.status = 'fail'; it.error = '도구와 연결이 끊겼어요. 양식통일_시작.bat을 다시 실행해 주세요.';
+      it.status = 'fail'; it.error = '도구와 연결이 끊겼어요. 주간업무보고_자동화.bat을 다시 실행해 주세요.';
     }
     n++; $('bar').style.width = Math.round(n / todo.length * 100) + '%';
     render();
@@ -366,6 +421,73 @@ $('btnQuit').onclick = async () => {
   try { await fetch('/api/shutdown', { method: 'POST' }); } catch (e) {}
   $('bye').classList.add('show');
 };
+
+// ---------- 통합 (경영전략본부 / 전사) ----------
+const MERGE_SLOTS = {
+  strategy: ['CE팀', 'ESG경영팀', '경영관리팀', '원가관리팀', '해외경영관리팀', '전략담당'],
+  company: ['경영지원본부', '구매담당', '디지털전략본부', '생산본부', '서비스본부', '설치본부', '안전지원실', '인사노무담당', '한국사업본부', '해외사업본부', '경영전략본부'],
+};
+document.querySelectorAll('.card.merge').forEach(card => {
+  const kind = card.dataset.kind, slots = MERGE_SLOTS[kind];
+  const st = { files: {}, busy: 0, result: null, error: '' };   // files: slot → { sid, name }
+  const q = (s) => card.querySelector(s);
+
+  const draw = () => {
+    const n = slots.filter(s => st.files[s]).length;
+    q('[data-count]').textContent = `${n}/${slots.length}`;
+    q('[data-slots]').innerHTML = slots.map(s => {
+      const f = st.files[s];
+      return `<li class="${f ? 'ok' : ''}"><span>${f ? '✅' : '⬜'}</span><span class="nm">${esc(s)}</span><span class="fn" title="${f ? esc(f.name) : ''}">${f ? esc(f.name) : ''}</span></li>`;
+    }).join('') + (st.busy ? `<li class="run"><span class="spin"></span>파일 확인 중… (${st.busy}개)</li>` : '');
+    q('[data-run]').disabled = n < slots.length || st.busy > 0 || st.running || !online;
+    q('[data-clear]').disabled = st.running;
+    const r = q('[data-result]');
+    if (st.running) r.innerHTML = `<div class="item"><span class="spin"></span> 통합하는 중이에요… 1~3분 걸릴 수 있어요.</div>`;
+    else if (st.result) r.innerHTML = `
+      <div class="item res"><div class="row"><div class="ico">✅</div><div class="main"><div class="fname">${esc(st.result.outName)}</div></div>
+      <button class="btn mint small" data-dl>⬇ 받기</button></div>
+      ${st.result.warnings.length ? `<div class="warn">${st.result.warnings.map(esc).join('<br>')}</div>` : ''}</div>`;
+    else r.innerHTML = st.error ? `<div class="err">${esc(st.error)}</div>` : '';
+    const dl = r.querySelector('[data-dl]');
+    if (dl) dl.onclick = () => { const a = document.createElement('a'); a.href = `/api/download?id=${st.result.id}&name=${encodeURIComponent(st.result.outName)}`; document.body.appendChild(a); a.click(); a.remove(); };
+  };
+
+  const add = async (list) => {
+    st.error = ''; st.result = null;
+    for (const f of list) {
+      if (!/\.(xlsx|xls|xlsm)$/i.test(f.name) || f.name.startsWith('~$')) continue;
+      st.busy++; draw();
+      try {
+        const res = await fetch(`/api/merge/stage?kind=${kind}`, { method: 'POST', headers: { 'X-File-Name': encodeURIComponent(f.name) }, body: f });
+        const j = await res.json();
+        if (j.ok) { if (st.files[j.slot]) toast(`${j.slot} 파일을 새 파일로 바꿨어요.`); st.files[j.slot] = { sid: j.sid, name: f.name }; }
+        else st.error = `${f.name}: ${j.error}`;
+      } catch (e) { st.error = '도구와 연결이 끊겼어요.'; }
+      st.busy--; draw();
+    }
+  };
+
+  const drop = q('[data-drop]'), picker = q('[data-picker]');
+  drop.addEventListener('click', () => picker.click());
+  picker.addEventListener('change', e => { add([...e.target.files]); e.target.value = ''; });
+  ['dragenter', 'dragover'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.add('over'); }));
+  ['dragleave', 'drop'].forEach(ev => drop.addEventListener(ev, e => { e.preventDefault(); drop.classList.remove('over'); }));
+  drop.addEventListener('drop', e => add([...e.dataTransfer.files]));
+  q('[data-clear]').onclick = () => { st.files = {}; st.result = null; st.error = ''; draw(); };
+  q('[data-run]').onclick = async () => {
+    st.running = true; st.error = ''; st.result = null; draw();
+    try {
+      const res = await fetch('/api/merge/run', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ kind, sids: slots.map(s => st.files[s].sid) }) });
+      const j = await res.json();
+      if (j.ok) { st.result = j; toast('통합을 마쳤어요 🎉'); } else st.error = j.error;
+    } catch (e) { st.error = '도구와 연결이 끊겼어요.'; }
+    st.running = false; draw();
+  };
+  card.redraw = draw;
+  draw();
+});
+const redrawMerge = () => document.querySelectorAll('.card.merge').forEach(c => c.redraw && c.redraw());
+setInterval(redrawMerge, 5000);
 
 render(); ping(); setInterval(ping, 5000);
 </script>

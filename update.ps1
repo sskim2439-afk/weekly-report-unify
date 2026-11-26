@@ -7,6 +7,7 @@ $repoRaw = 'https://raw.githubusercontent.com/sskim2439-afk/weekly-report-unify/
 # 각 파일이 정상인지 확인할 때 쓰는 표식 (받은 파일에 이 문구가 없으면 깨진 것으로 본다)
 $files = [ordered]@{
   'convert.ps1' = 'function Convert-WeeklyReport'
+  'merge.ps1'   = 'function Merge-Strategy'
   'server.ps1'  = 'function Send-Response'
   'index.html'  = '양식 통일 전'
   'update.ps1'  = '자동 업데이트'
