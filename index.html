@@ -272,10 +272,10 @@
       <div class="card-head">
         <div class="badge after">🏢</div>
         <h2>전사 통합</h2>
-        <span class="count" data-count>0/11</span>
+        <span class="count" data-count>0/9</span>
       </div>
       <div class="drop small-drop" data-drop>
-        <b>11개 본부 파일을 끌어다 놓으세요</b>
+        <b>9개 본부 파일을 끌어다 놓으세요</b>
         <small>각 파일의 요약본 시트를 모아요 · 본부 이름은 자동으로 알아봐요</small>
         <input type="file" multiple accept=".xlsx,.xls,.xlsm" hidden data-picker>
       </div>
@@ -442,7 +442,7 @@ $('btnQuit').onclick = async () => {
 // ---------- 통합 (경영전략본부 / 전사) ----------
 const MERGE_SLOTS = {
   strategy: ['CE팀', 'ESG경영팀', '경영관리팀', '원가관리팀', '해외경영관리팀', '전략담당'],
-  company: ['경영지원본부', '구매담당', '디지털전략본부', '생산본부', '서비스본부', '설치본부', '안전지원실', '인사노무담당', '한국사업본부', '해외사업본부', '경영전략본부'],
+  company: ['경영지원본부', '구매담당', '디지털전략본부', '생산/설치본부', '서비스본부', '안전지원실', '인사노무담당', '한국/해외사업본부', '경영전략본부'],
 };
 document.querySelectorAll('.card.merge').forEach(card => {
   const kind = card.dataset.kind, slots = MERGE_SLOTS[kind];

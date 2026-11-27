@@ -11,8 +11,8 @@ $script:MergeSlots = @{
   }
   company  = [ordered]@{
     '디지털전략본부' = @('디지털'); '경영전략본부' = @('경영전략', 'CSO'); '경영지원본부' = @('경영지원'); '구매담당' = @('구매')
-    '인사노무담당' = @('인사', '노무'); '생산본부' = @('생산'); '서비스본부' = @('서비스'); '설치본부' = @('설치')
-    '안전지원실' = @('안전'); '한국사업본부' = @('한국', '영업'); '해외사업본부' = @('해외')
+    '인사노무담당' = @('인사', '노무'); '생산/설치본부' = @('생산', '설치'); '서비스본부' = @('서비스')
+    '안전지원실' = @('안전'); '한국/해외사업본부' = @('한국', '해외', '영업')
   }
 }
 
@@ -34,15 +34,16 @@ $script:SheetSpecs = @{
 
 # 전사 시트의 페이지 구성 (참고 파일 순서 그대로). max = 그 페이지 묶음이 넘으면 안 되는 쪽수 (0 = 제한 없음)
 $script:CompanyPages = @(
-  @{ blocks = @(@{ label = '안전지원실'; parts = @('안전지원실') }, @{ label = '한국사업본부'; parts = @('한국사업본부') }); max = 0 },
-  @{ blocks = @(@{ label = '해외사업본부'; parts = @('해외사업본부') }, @{ label = '서비스사업본부'; parts = @('서비스본부') }); max = 0 },
+  # 한국/해외, 생산/설치는 한 파일에 두 본부가 들어 있다: only = 그 파일에서 가져올 구역(구분 칸 이름)
+  @{ blocks = @(@{ label = '안전지원실'; parts = @('안전지원실') }, @{ label = '한국사업본부'; parts = @('한국/해외사업본부'); only = '한국' }); max = 0 },
+  @{ blocks = @(@{ label = '해외사업본부'; parts = @('한국/해외사업본부'); only = '해외' }, @{ label = '서비스사업본부'; parts = @('서비스본부') }); max = 0 },
   @{ blocks = @(@{ label = '경영전략본부'; parts = @('경영전략본부') }); max = 0 },
   # 경영지원본부: [기획재무] → [구매] → [영업관리/커뮤니케이션] → [준법] → [인사/노무] 순서가 되도록
   # 경영지원본부 파일 안의 '기획재무' 덩어리 뒤에 구매, '준법' 덩어리 뒤에 인사노무를 끼워 넣는다. 2쪽을 넘으면 덜 중요한 내용을 표 밖으로
   @{ blocks = @(@{ label = '경영지원본부'; parts = @('경영지원본부')
                    inserts = @(@{ part = '구매담당'; bracket = '[구매담당]'; after = '기획재무'; atEnd = $false }
                                @{ part = '인사노무담당'; bracket = '[인사/노무담당]'; after = '준법'; atEnd = $true }) }); max = 2 },
-  @{ blocks = @(@{ label = '생산본부'; parts = @('생산본부') }, @{ label = '설치본부'; parts = @('설치본부') }); max = 0 }
+  @{ blocks = @(@{ label = '생산본부'; parts = @('생산/설치본부'); only = '생산' }, @{ label = '설치본부'; parts = @('생산/설치본부'); only = '설치' }); max = 0 }
 )
 $script:StrategyOrder = @('경영관리팀', '원가관리팀', 'CE팀', 'ESG경영팀', '해외경영관리팀')
 
@@ -148,6 +149,7 @@ function New-BlockPlan($sources, [ref]$bandSeq) {
     $first = $false
     if ($src.bracket) { [void]$plan.Add(@{ k = 'text'; text = $src.bracket; band = 0 }) }
     $parts = Read-Parts $src.rs
+    if ($src.only) { $parts = @($parts | Where-Object { $_.label -match $src.only }) }
     $labels = @($parts | ForEach-Object { $_.label } | Where-Object { $_ } | Select-Object -Unique)
     $pi = 0
     foreach ($p in $parts) {
@@ -221,7 +223,11 @@ function Remove-EmptyHeads([System.Collections.ArrayList]$plan) {
     $j = $i + 1; while ($j -lt $plan.Count -and $plan[$j].k -eq 'blank') { $j++ }
     if ($j -ge $plan.Count -or (& $isHead $plan[$j])) { $plan.RemoveAt($i) }
   }
-  for ($i = $plan.Count - 1; $i -ge 1; $i--) { if ($plan[$i].k -eq 'blank' -and $plan[$i - 1].k -eq 'blank') { $plan.RemoveAt($i) } }
+  # 겹친 빈 줄은 프로그램이 넣은 빈 줄만 지운다. 원본의 빈 줄(사진이 놓인 자리 등)은 그대로 둔다
+  for ($i = $plan.Count - 1; $i -ge 1; $i--) {
+    if ($plan[$i].k -ne 'blank' -or $plan[$i - 1].k -ne 'blank') { continue }
+    if (-not $plan[$i].ws) { $plan.RemoveAt($i) } elseif (-not $plan[$i - 1].ws) { $plan.RemoveAt($i - 1) }
+  }
 }
 
 # ---------- 시트 쓰기 ----------
@@ -451,9 +457,10 @@ function Merge-Company($Excel, $files, [string]$outDir, [string]$dateTag) {
       Write-PageHeader $ws $sp $row $dates; $row += 5; $first = $false
       $plans = @(); $total = 0
       foreach ($blk in $pg.blocks) {
-        $srcs = @(); foreach ($part in $blk.parts) { if ($sum[$part]) { $srcs += @{ rs = $sum[$part] } } }
+        $srcs = @(); foreach ($part in $blk.parts) { if ($sum[$part]) { $srcs += @{ rs = $sum[$part]; only = $blk.only } } }
         $plan = New-BlockPlan $srcs ([ref]$bandSeq)
         foreach ($in in @($blk.inserts)) { if ($in -and $sum[$in.part]) { Add-IntoPlan $plan (New-SubRows $sum[$in.part] $in.bracket ([ref]$bandSeq)) $in.after $in.atEnd } }
+        if ($blk.only -and -not @($plan | Where-Object { $_.k -eq 'src' }).Count) { [void]$warn.Add("$($blk.parts[0]) 파일에서 '$($blk.only)' 구역(구분 칸)을 찾지 못해 $($blk.label) 칸이 비었습니다.") }
         $plans += @{ label = $blk.label; plan = $plan }; $total += $plan.Count
       }
       $dropped = @()
